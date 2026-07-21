@@ -154,4 +154,4 @@ Images are tagged with the full version, minor version, major version, and `late
 
 ## License
 
-Private
+Licensed under the [MIT License](LICENSE).
