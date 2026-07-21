@@ -102,6 +102,9 @@ async function main() {
   log('Scheduler started');
 
   const app = express();
+  // Caddy terminates TLS one hop upstream; this makes req.protocol honor
+  // X-Forwarded-Proto when generating signed media URLs.
+  app.set('trust proxy', 1);
   app.use(express.json());
 
   // Request logging middleware

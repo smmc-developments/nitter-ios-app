@@ -65,6 +65,14 @@ docker compose -f docker-compose.release.yml logs -f
 
 The server is available at `http://localhost:3000` by default. Set `HOST_PORT` in `.env` to expose a different host port. For internet-facing deployments, place it behind an HTTPS reverse proxy and do not expose port 3000 directly.
 
+For Caddy, a basic site block is sufficient. Caddy supplies the forwarded host and HTTPS protocol that the server uses to generate signed media URLs:
+
+```caddyfile
+nitter.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
 #### Persistent Data
 
 The release Compose file uses the explicitly named Docker volume `nitter-ios-app-data`, mounted at `/app/data`. Container recreation and image upgrades preserve:
