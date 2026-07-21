@@ -7,14 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09C29BD5D07E51645090AF7C /* SharedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CBD5738E0D79FA617DFA5A /* SharedSettings.swift */; };
 		17D44334629EB746BF34B246 /* TweetCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70B9E0CCDC9DF421A3A06B2D /* TweetCell.swift */; };
 		1D43AD0C65002EAFCE0E62A4 /* RateLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A5DCF1D2CE56DDC39EFE9B /* RateLimitTests.swift */; };
 		321511B86AB833744886F236 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 24056CFBEBADD18F84CAF058 /* Assets.xcassets */; };
 		3C322562682AB79DDF0B38C2 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAE2E36D8A5CDE53629C958D /* ThemeManager.swift */; };
 		3F618F5A8781BED2FEBE1DC5 /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBEA7D97748BFD4E04E22049 /* SafariView.swift */; };
+		41EBCFCA00577FE2E1618518 /* NitterShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5385E130D4023F0F107E8896 /* NitterShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		4B190FEC8369B5B81EE272C6 /* NitterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D67A4DD00936EFF394F0679 /* NitterApp.swift */; };
 		4B7C63D8E2DD7FA223BC5367 /* TimelineCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B392072F79CEBCC385500D9F /* TimelineCacheTests.swift */; };
+		67B42A4066E1F8635A37D6E6 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 242FF6D00DBB68FBCA2E142D /* ShareViewController.swift */; };
 		71D5E4952144B1639B5669B0 /* LinkedText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75840E9B7626B10438A460F8 /* LinkedText.swift */; };
+		8EF62D02E2CBB3C961DB7C67 /* SharedLinkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76B6181A6D463388BDC2F3D /* SharedLinkView.swift */; };
 		9204EC0369C38390143A4336 /* TimelineRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0C3BD54ECA27238DF7481B8 /* TimelineRepository.swift */; };
 		9427AE9EF4BF800A63FF8794 /* ChallengeBootstrapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54620DFBB517C92D8753B51A /* ChallengeBootstrapper.swift */; };
 		95D720081032036F452160AB /* SavedAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C28C63FD5AFAA18FB30CE33 /* SavedAccount.swift */; };
@@ -22,11 +26,13 @@
 		9B7DF388BE933BA324C492C5 /* Tweet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F75A4B41084F018ADD993123 /* Tweet.swift */; };
 		9B964F37881CA7754E2EF536 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AC7001C5D8796A1FFFD7DD7 /* FeedView.swift */; };
 		A56086D30961A80F2BED6E53 /* AccountFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F32EFF89684F773F2EAE070D /* AccountFeedView.swift */; };
+		A7C9CEC43B4F253B87259807 /* SharedSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7CBD5738E0D79FA617DFA5A /* SharedSettings.swift */; };
 		ADC19640C05F90589EF64527 /* TweetDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9696EC4BC142379D9A520008 /* TweetDetailView.swift */; };
 		B2B48EF2AC0D2CCC7E02A5FD /* TimelineCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81FAD395D543F5970F742202 /* TimelineCache.swift */; };
 		B3984F5B909FEFFB08CF2D02 /* timeline.html in Resources */ = {isa = PBXBuildFile; fileRef = 75ADD4E801F83789EC28A6C2 /* timeline.html */; };
 		B5339D3BAA01741B85E65FD3 /* TimelineParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7790D96F44433D4C3B66F478 /* TimelineParserTests.swift */; };
 		B5F068ECE4AB273B74559E9C /* TimelineParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450283D8C0578FCCD227ADB2 /* TimelineParser.swift */; };
+		BA645400C5C4E3F984EF487F /* SharedLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA940C76E7144C57FD178F1 /* SharedLinkTests.swift */; };
 		C4AA29BF5EEAB980CBE730FE /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = B2CF3BF80A83F8C741119F4A /* SwiftSoup */; };
 		D0DB55480F999AB0B071BE9A /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EA9144BE67F8569D208FB0 /* SettingsView.swift */; };
 		D6E25947CF2BE3464AAE94FC /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5806A0538BBA09918B623D45 /* AccountsView.swift */; };
@@ -45,21 +51,46 @@
 			remoteGlobalIDString = C56D04629807A4F1D40195FF;
 			remoteInfo = Nitter;
 		};
+		695AEF6F424F3109AA9BA8BF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6EDD1CF6571F047B013A766A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 25B6BFD239A2B739FCAD2160;
+			remoteInfo = NitterShareExtension;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		C9AFCB0A6E396709773F3983 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				41EBCFCA00577FE2E1618518 /* NitterShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		023E13F9F2C43B32E9B598B7 /* Nitter.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nitter.entitlements; sourceTree = "<group>"; };
 		06EA9144BE67F8569D208FB0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		164E678DD8BB3A0AF513BBC8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		24056CFBEBADD18F84CAF058 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		242FF6D00DBB68FBCA2E142D /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		24A5DCF1D2CE56DDC39EFE9B /* RateLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateLimitTests.swift; sourceTree = "<group>"; };
 		3AC7001C5D8796A1FFFD7DD7 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
 		450283D8C0578FCCD227ADB2 /* TimelineParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineParser.swift; sourceTree = "<group>"; };
+		5385E130D4023F0F107E8896 /* NitterShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = NitterShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		54620DFBB517C92D8753B51A /* ChallengeBootstrapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChallengeBootstrapper.swift; sourceTree = "<group>"; };
 		5806A0538BBA09918B623D45 /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
 		5C28C63FD5AFAA18FB30CE33 /* SavedAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAccount.swift; sourceTree = "<group>"; };
 		5D67A4DD00936EFF394F0679 /* NitterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitterApp.swift; sourceTree = "<group>"; };
 		6526ED9CF041D175019D90DA /* NitterClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NitterClient.swift; sourceTree = "<group>"; };
 		6EAC100AC350AAD03A8CB3C7 /* LiveFetchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveFetchTests.swift; sourceTree = "<group>"; };
+		6FA940C76E7144C57FD178F1 /* SharedLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkTests.swift; sourceTree = "<group>"; };
 		70B9E0CCDC9DF421A3A06B2D /* TweetCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TweetCell.swift; sourceTree = "<group>"; };
 		75840E9B7626B10438A460F8 /* LinkedText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedText.swift; sourceTree = "<group>"; };
 		75ADD4E801F83789EC28A6C2 /* timeline.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = timeline.html; sourceTree = "<group>"; };
@@ -69,11 +100,15 @@
 		8DFFD5069668D49710E99B97 /* CSVImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVImporterTests.swift; sourceTree = "<group>"; };
 		9696EC4BC142379D9A520008 /* TweetDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TweetDetailView.swift; sourceTree = "<group>"; };
 		A5158C1125D2C05B4F505924 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
+		A7CBD5738E0D79FA617DFA5A /* SharedSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedSettings.swift; sourceTree = "<group>"; };
 		B0C3BD54ECA27238DF7481B8 /* TimelineRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineRepository.swift; sourceTree = "<group>"; };
 		B392072F79CEBCC385500D9F /* TimelineCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineCacheTests.swift; sourceTree = "<group>"; };
 		BAE2E36D8A5CDE53629C958D /* ThemeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeManager.swift; sourceTree = "<group>"; };
+		BBE692C3891A9BD72A86320C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		BD33F36236EAB664B90554BF /* NitterTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = NitterTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C2C9FD5D795E5B5F16A5ABE9 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
+		D9F2B5E274AE7519DD81CD39 /* NitterShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NitterShareExtension.entitlements; sourceTree = "<group>"; };
+		E76B6181A6D463388BDC2F3D /* SharedLinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkView.swift; sourceTree = "<group>"; };
 		F32EFF89684F773F2EAE070D /* AccountFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountFeedView.swift; sourceTree = "<group>"; };
 		F455EBCE6C0B70438767056F /* RootTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
 		F75A4B41084F018ADD993123 /* Tweet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tweet.swift; sourceTree = "<group>"; };
@@ -96,6 +131,7 @@
 			isa = PBXGroup;
 			children = (
 				87CBD53B9D2C52AC585BA710 /* Nitter.app */,
+				5385E130D4023F0F107E8896 /* NitterShareExtension.appex */,
 				BD33F36236EAB664B90554BF /* NitterTests.xctest */,
 			);
 			name = Products;
@@ -105,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				164E678DD8BB3A0AF513BBC8 /* Info.plist */,
+				023E13F9F2C43B32E9B598B7 /* Nitter.entitlements */,
 				5D67A4DD00936EFF394F0679 /* NitterApp.swift */,
 				BAE2E36D8A5CDE53629C958D /* ThemeManager.swift */,
 				B6F91A69783B7DD7A269AA11 /* Models */,
@@ -114,6 +151,14 @@
 				B1AE5D758446D4BB8AF2F300 /* Views */,
 			);
 			path = Nitter;
+			sourceTree = "<group>";
+		};
+		5F4ADFC25B5796EC3B7DA80A /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A7CBD5738E0D79FA617DFA5A /* SharedSettings.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 		66063563F03BF4E95483EA25 /* ViewModels */ = {
@@ -141,7 +186,9 @@
 			isa = PBXGroup;
 			children = (
 				5EAEC59B01F85160E17D771C /* Nitter */,
+				E5BBA76442343A7B17F7F780 /* NitterShareExtension */,
 				A46D7F15AB743E2640D082B9 /* NitterTests */,
+				5F4ADFC25B5796EC3B7DA80A /* Shared */,
 				13B134B22E9DE8F67D2E3F84 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -152,6 +199,7 @@
 				8DFFD5069668D49710E99B97 /* CSVImporterTests.swift */,
 				6EAC100AC350AAD03A8CB3C7 /* LiveFetchTests.swift */,
 				24A5DCF1D2CE56DDC39EFE9B /* RateLimitTests.swift */,
+				6FA940C76E7144C57FD178F1 /* SharedLinkTests.swift */,
 				B392072F79CEBCC385500D9F /* TimelineCacheTests.swift */,
 				7790D96F44433D4C3B66F478 /* TimelineParserTests.swift */,
 				D47ECC879C74E4E88328C39D /* Fixtures */,
@@ -169,6 +217,7 @@
 				F455EBCE6C0B70438767056F /* RootTabView.swift */,
 				FBEA7D97748BFD4E04E22049 /* SafariView.swift */,
 				06EA9144BE67F8569D208FB0 /* SettingsView.swift */,
+				E76B6181A6D463388BDC2F3D /* SharedLinkView.swift */,
 				70B9E0CCDC9DF421A3A06B2D /* TweetCell.swift */,
 				9696EC4BC142379D9A520008 /* TweetDetailView.swift */,
 			);
@@ -192,6 +241,16 @@
 			path = Fixtures;
 			sourceTree = "<group>";
 		};
+		E5BBA76442343A7B17F7F780 /* NitterShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				BBE692C3891A9BD72A86320C /* Info.plist */,
+				D9F2B5E274AE7519DD81CD39 /* NitterShareExtension.entitlements */,
+				242FF6D00DBB68FBCA2E142D /* ShareViewController.swift */,
+			);
+			path = NitterShareExtension;
+			sourceTree = "<group>";
+		};
 		EAF6118E5FE0B4D90BEF1AB7 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -203,6 +262,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		25B6BFD239A2B739FCAD2160 /* NitterShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 835A91B18F3A3183A80DF657 /* Build configuration list for PBXNativeTarget "NitterShareExtension" */;
+			buildPhases = (
+				DD4A2139855EC41031E7E052 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NitterShareExtension;
+			packageProductDependencies = (
+			);
+			productName = NitterShareExtension;
+			productReference = 5385E130D4023F0F107E8896 /* NitterShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		C56D04629807A4F1D40195FF /* Nitter */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 237678789FFC558D5F52B9F9 /* Build configuration list for PBXNativeTarget "Nitter" */;
@@ -210,10 +286,12 @@
 				606BFD2356BBE5E9644D43B6 /* Sources */,
 				452C9BA0FCEDE73BCFC6BB85 /* Resources */,
 				3C9C744CCFF380442BBB5184 /* Frameworks */,
+				C9AFCB0A6E396709773F3983 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				19751D0FA38B8F6E9AAAA919 /* PBXTargetDependency */,
 			);
 			name = Nitter;
 			packageProductDependencies = (
@@ -251,6 +329,12 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					25B6BFD239A2B739FCAD2160 = {
+						DevelopmentTeam = DW35S36K2Z;
+					};
+					C56D04629807A4F1D40195FF = {
+						DevelopmentTeam = DW35S36K2Z;
+					};
 				};
 			};
 			buildConfigurationList = 23FCF049C3319042B62E4A6C /* Build configuration list for PBXProject "Nitter" */;
@@ -271,6 +355,7 @@
 			projectRoot = "";
 			targets = (
 				C56D04629807A4F1D40195FF /* Nitter */,
+				25B6BFD239A2B739FCAD2160 /* NitterShareExtension */,
 				FE16D0CF92FBE77037886181 /* NitterTests */,
 			);
 		};
@@ -303,6 +388,7 @@
 				F3B6F042D56CA01277FD5692 /* CSVImporterTests.swift in Sources */,
 				9B07A461509ED5B2BB408C63 /* LiveFetchTests.swift in Sources */,
 				1D43AD0C65002EAFCE0E62A4 /* RateLimitTests.swift in Sources */,
+				BA645400C5C4E3F984EF487F /* SharedLinkTests.swift in Sources */,
 				4B7C63D8E2DD7FA223BC5367 /* TimelineCacheTests.swift in Sources */,
 				B5339D3BAA01741B85E65FD3 /* TimelineParserTests.swift in Sources */,
 			);
@@ -325,6 +411,8 @@
 				3F618F5A8781BED2FEBE1DC5 /* SafariView.swift in Sources */,
 				95D720081032036F452160AB /* SavedAccount.swift in Sources */,
 				D0DB55480F999AB0B071BE9A /* SettingsView.swift in Sources */,
+				8EF62D02E2CBB3C961DB7C67 /* SharedLinkView.swift in Sources */,
+				A7C9CEC43B4F253B87259807 /* SharedSettings.swift in Sources */,
 				3C322562682AB79DDF0B38C2 /* ThemeManager.swift in Sources */,
 				B2B48EF2AC0D2CCC7E02A5FD /* TimelineCache.swift in Sources */,
 				B5F068ECE4AB273B74559E9C /* TimelineParser.swift in Sources */,
@@ -335,9 +423,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DD4A2139855EC41031E7E052 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67B42A4066E1F8635A37D6E6 /* ShareViewController.swift in Sources */,
+				09C29BD5D07E51645090AF7C /* SharedSettings.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		19751D0FA38B8F6E9AAAA919 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 25B6BFD239A2B739FCAD2160 /* NitterShareExtension */;
+			targetProxy = 695AEF6F424F3109AA9BA8BF /* PBXContainerItemProxy */;
+		};
 		A26F43D6BEBA20AFE8037080 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C56D04629807A4F1D40195FF /* Nitter */;
@@ -346,6 +448,25 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		05329708AEA0B91DDC14FB6A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NitterShareExtension/NitterShareExtension.entitlements;
+				DEVELOPMENT_TEAM = DW35S36K2Z;
+				INFOPLIST_FILE = NitterShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = local.xcancel.XCancel.ShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		13B6695E23F913501216835A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -361,6 +482,25 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nitter.app/Nitter";
+			};
+			name = Debug;
+		};
+		3A399710BF5071A5B0365C33 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = NitterShareExtension/NitterShareExtension.entitlements;
+				DEVELOPMENT_TEAM = DW35S36K2Z;
+				INFOPLIST_FILE = NitterShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = local.xcancel.XCancel.ShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -424,7 +564,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Nitter/Nitter.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = DW35S36K2Z;
 				INFOPLIST_FILE = Nitter/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -522,7 +664,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Nitter/Nitter.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = DW35S36K2Z;
 				INFOPLIST_FILE = Nitter/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -552,6 +696,15 @@
 			buildConfigurations = (
 				D948A617666AD96D3A6A14E0 /* Debug */,
 				4A428008565C09B41EC75E74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		835A91B18F3A3183A80DF657 /* Build configuration list for PBXNativeTarget "NitterShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3A399710BF5071A5B0365C33 /* Debug */,
+				05329708AEA0B91DDC14FB6A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

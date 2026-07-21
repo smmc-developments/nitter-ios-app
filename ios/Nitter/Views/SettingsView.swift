@@ -12,8 +12,8 @@ struct SettingsView: View {
     }
 
     init() {
-        _serverURL = State(initialValue: UserDefaults.standard.string(forKey: "server.baseURL") ?? "http://localhost:3000")
-        _apiKey = State(initialValue: UserDefaults.standard.string(forKey: "server.apiKey") ?? "")
+        _serverURL = State(initialValue: SharedSettings.defaults.string(forKey: "server.baseURL") ?? "http://localhost:3000")
+        _apiKey = State(initialValue: SharedSettings.defaults.string(forKey: "server.apiKey") ?? "")
     }
 
     var body: some View {
@@ -32,13 +32,13 @@ struct SettingsView: View {
                         .keyboardType(.URL)
                         .textContentType(.URL)
                         .onChange(of: serverURL) { _, value in
-                            UserDefaults.standard.set(value, forKey: "server.baseURL")
+                            SharedSettings.defaults.set(value, forKey: "server.baseURL")
                         }
                     SecureField("API key", text: $apiKey)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .onChange(of: apiKey) { _, value in
-                            UserDefaults.standard.set(value, forKey: "server.apiKey")
+                            SharedSettings.defaults.set(value, forKey: "server.apiKey")
                         }
                 } header: {
                     Text("Server")

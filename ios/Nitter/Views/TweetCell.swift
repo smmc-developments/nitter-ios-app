@@ -134,13 +134,11 @@ struct TweetCell: View {
                         image
                             .resizable()
                             .scaledToFit()
-                            .frame(maxWidth: .infinity)
                     } placeholder: {
                         Color("MediaPlaceholder")
-                            .frame(height: tweet.photoURLs.count == 1 ? 220 : 110)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .background(Color("MediaCellFill"))
+                    .frame(height: tweet.photoURLs.count == 1 ? 320 : 170)
                     .cornerRadius(8)
                 }
             }
@@ -182,12 +180,11 @@ private struct TweetVideoView: View {
                 image
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: 320)
             } placeholder: {
                 Color("MediaPlaceholder")
-                    .frame(height: 200)
             }
             .frame(maxWidth: .infinity, alignment: .center)
+            .frame(height: 300)
             .cornerRadius(8)
             .overlay {
                 if videoURL != nil {

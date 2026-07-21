@@ -22,13 +22,13 @@ actor APIClient {
     /// Configurable base URL — defaults to localhost; override via
     /// UserDefaults key "server.baseURL" for LAN testing.
     var baseURL: String {
-        UserDefaults.standard.string(forKey: "server.baseURL")
+        SharedSettings.defaults.string(forKey: "server.baseURL")
             ?? "http://localhost:3000"
     }
 
     /// API key for the companion server. Set via UserDefaults "server.apiKey".
     var apiKey: String? {
-        UserDefaults.standard.string(forKey: "server.apiKey")
+        SharedSettings.defaults.string(forKey: "server.apiKey")
     }
 
     private let decoder: JSONDecoder = {
