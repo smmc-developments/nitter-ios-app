@@ -1,8 +1,8 @@
 import Foundation
 
-/// Coordinates the server API, `XCancelClient`, and `TimelineCache` with a
+/// Coordinates the server API, `NitterClient`, and `TimelineCache` with a
 /// stale-while-revalidate policy: serve cached data instantly, then try the
-/// server API first, falling back to direct xcancel access if offline.
+/// server API first, falling back to direct Nitter access if offline.
 struct TimelineRepository: Sendable {
 
     struct Cached: Sendable {
@@ -14,12 +14,12 @@ struct TimelineRepository: Sendable {
     static let shared = TimelineRepository()
 
     private let server: APIClient
-    private let client: XCancelClient
+    private let client: NitterClient
     private let cache: TimelineCache
 
     init(
         server: APIClient = .shared,
-        client: XCancelClient = .shared,
+        client: NitterClient = .shared,
         cache: TimelineCache = .shared
     ) {
         self.server = server
@@ -35,7 +35,7 @@ struct TimelineRepository: Sendable {
     }
 
     /// Fetches the latest timeline, preferring the server API and falling
-    /// back to direct xcancel access if the server is offline.
+    /// back to direct Nitter access if the server is offline.
     @discardableResult
     func fetch(for username: String) async throws -> Timeline {
         // Try the server first.
@@ -50,7 +50,7 @@ struct TimelineRepository: Sendable {
             }
         }
 
-        // Fallback: direct xcancel.com access.
+        // Fallback: direct Nitter access.
         let timeline = try await client.timeline(for: username)
         await cache.store(timeline, for: username)
         return timeline

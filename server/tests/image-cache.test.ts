@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import type { Fetcher } from '../src/fetcher.js';
 
-const dataDir = mkdtempSync(join(tmpdir(), 'xcancel-images-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'nitter-images-'));
 process.env.DATA_DIR = dataDir;
 const { ImageCache, isAllowedImageUrl, isAllowedVideoUrl } = await import('../src/image-cache.js');
 

@@ -14,7 +14,7 @@ enum APIClientError: LocalizedError {
     }
 }
 
-/// Client for the companion Node.js server that handles xcancel fetching
+/// Client for the companion Node.js server that handles Nitter fetching
 /// via a real Chrome browser, avoiding rate-limiting on the iOS device.
 actor APIClient {
     static let shared = APIClient()
@@ -257,7 +257,7 @@ struct ServerTweet: Decodable {
         )
     }
 
-    /// Parse the date format used by xcancel: "Jul 20, 2026 · 5:15 AM UTC"
+    /// Parse the date format used by Nitter: "Jul 20, 2026 · 5:15 AM UTC"
     static func parseDate(_ s: String) -> Date? {
         let fractionalISO8601 = ISO8601DateFormatter()
         fractionalISO8601.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

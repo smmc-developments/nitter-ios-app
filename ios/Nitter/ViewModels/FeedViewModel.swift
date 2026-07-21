@@ -1,7 +1,7 @@
 import Foundation
 
 /// Loads the feed from the server's batch endpoint (single request for all
-/// accounts), falling back to per-account direct xcancel fetches when offline.
+/// accounts), falling back to per-account direct Nitter fetches when offline.
 @MainActor
 @Observable
 final class FeedViewModel {
@@ -34,7 +34,7 @@ final class FeedViewModel {
             // Server offline — fall through to per-account.
         }
 
-        // Fallback: per-account fetch via direct xcancel access.
+        // Fallback: per-account fetch via direct Nitter access.
         var allTimelines: [Timeline] = []
         var failed: [String] = []
 

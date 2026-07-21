@@ -80,7 +80,7 @@ export class Fetcher {
       '--disable-background-networking',
       '--disable-gpu',
       '--no-sandbox',
-      '--user-data-dir=/tmp/xcancel-chrome-profile',
+      '--user-data-dir=/tmp/nitter-chrome-profile',
     ];
     log(`Chrome args: ${chromeArgs.join(' ')}`);
 

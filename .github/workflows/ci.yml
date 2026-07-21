@@ -69,8 +69,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project XCancel.xcodeproj \
-            -scheme XCancel \
+            -project Nitter.xcodeproj \
+            -scheme Nitter \
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO

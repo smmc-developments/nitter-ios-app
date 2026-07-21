@@ -31,7 +31,7 @@ Requires Xcode 16+ and macOS. Uses [XcodeGen](https://github.com/yonaskolb/Xcode
 ```bash
 cd ios
 xcodegen generate
-open XCancel.xcodeproj
+open Nitter.xcodeproj
 ```
 
 ## Server
@@ -49,7 +49,7 @@ openssl rand -hex 32
 
 Put the two generated values in `.env` as `API_KEY` and `PROXY_SECRET`. They must be different and remain stable across upgrades. Enter `API_KEY` in the iOS app's Settings tab. Do not commit `.env`.
 
-Set `XCANCEL_VERSION` to a released version such as `1.0.1` for reproducible deployments, or leave it as `latest` to track the newest release. If the GHCR package is private, authenticate using a GitHub personal access token with `read:packages`:
+Set `NITTER_VERSION` to a released version such as `1.0.1` for reproducible deployments, or leave it as `latest` to track the newest release. If the GHCR package is private, authenticate using a GitHub personal access token with `read:packages`:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io --username YOUR_GITHUB_USERNAME --password-stdin
@@ -69,9 +69,13 @@ The server is available at `http://localhost:3000` by default. Set `HOST_PORT` i
 
 The release Compose file uses the explicitly named Docker volume `nitter-ios-app-data`, mounted at `/app/data`. Container recreation and image upgrades preserve:
 
-- `xcancel.db` — accounts, tweets, cursors, and timeline membership
+- `nitter.db` — accounts, tweets, cursors, and timeline membership
 - `images/` — cached image data
 - `proxy-secret` — fallback media signing secret
+
+On the first start after upgrading from an older release, the server automatically renames the legacy `xcancel.db` database and its SQLite sidecar files to `nitter.db` before opening it.
+
+The renamed iOS target intentionally retains its original bundle identifier so installing Nitter upgrades the existing app and preserves its settings and local data.
 
 Inspect the volume with:
 
@@ -90,7 +94,7 @@ docker run --rm \
 
 #### Upgrades
 
-Update `XCANCEL_VERSION` in `.env`, then recreate the service using the new image:
+Update `NITTER_VERSION` in `.env`, then recreate the service using the new image:
 
 ```bash
 docker compose -f docker-compose.release.yml pull
@@ -113,7 +117,7 @@ Use the development Compose file to build the server from the current checkout:
 ```bash
 cd server
 cp .env.example .env
-docker compose up --build -d
+docker compose up --build -d --remove-orphans
 ```
 
 ### Local Development (macOS)
@@ -151,7 +155,7 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `INCLUDE_REPLIES` | `true` | Include replies in timeline |
 | `MAX_PARENT_ENRICHMENTS` | `20` | Parent context fetches per cycle |
 
-The release Compose file also accepts `XCANCEL_VERSION` (`latest`) and `HOST_PORT` (`3000`) for image selection and host port mapping. `PORT`, `DATA_DIR`, `CHROME_PATH`, and `NODE_ENV` are configured inside the image and should not be overridden.
+The release Compose file also accepts `NITTER_VERSION` (`latest`) and `HOST_PORT` (`3000`) for image selection and host port mapping. Existing `XCANCEL_VERSION` values remain supported during migration, but new deployments should use `NITTER_VERSION`. `PORT`, `DATA_DIR`, `CHROME_PATH`, and `NODE_ENV` are configured inside the image and should not be overridden.
 
 ### API Endpoints
 
@@ -169,7 +173,7 @@ The release Compose file also accepts `XCANCEL_VERSION` (`latest`) and `HOST_POR
 ### Data
 
 Persistent data is stored in a Docker volume at `/app/data/`:
-- `tweets.db` — SQLite database (tweets, accounts, timeline membership)
+- `nitter.db` — SQLite database (tweets, accounts, timeline membership)
 - `images/` — Cached media files (512 MB limit, 7-day expiry)
 - `proxy-secret` — Auto-generated HMAC key (persists across restarts)
 

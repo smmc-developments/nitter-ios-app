@@ -11,7 +11,37 @@ function log(msg: string) {
 fs.mkdirSync(DATA_DIR, { recursive: true });
 log(`Data directory: ${DATA_DIR}`);
 
-const dbPath = `${DATA_DIR}/xcancel.db`;
+const dbPath = `${DATA_DIR}/nitter.db`;
+const legacyDbPath = `${DATA_DIR}/xcancel.db`;
+
+if (fs.existsSync(dbPath) && fs.existsSync(legacyDbPath)) {
+  throw new Error(`Both ${dbPath} and ${legacyDbPath} exist; refusing to choose one`);
+}
+
+let migratedDatabase = false;
+if (!fs.existsSync(dbPath) && fs.existsSync(legacyDbPath)) {
+  fs.renameSync(legacyDbPath, dbPath);
+  migratedDatabase = true;
+}
+
+if (fs.existsSync(dbPath)) {
+  for (const suffix of ['-wal', '-shm']) {
+    const legacySidecar = legacyDbPath + suffix;
+    const currentSidecar = dbPath + suffix;
+    if (fs.existsSync(legacySidecar) && fs.existsSync(currentSidecar)) {
+      throw new Error(`Both ${currentSidecar} and ${legacySidecar} exist; refusing to choose one`);
+    }
+    if (fs.existsSync(legacySidecar)) {
+      fs.renameSync(legacySidecar, currentSidecar);
+      migratedDatabase = true;
+    }
+  }
+}
+
+if (migratedDatabase) {
+  log(`Migrated legacy database to ${dbPath}`);
+}
+
 log(`Opening database: ${dbPath}`);
 const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');

@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-/// Parses xcancel.com timeline pages (Nitter markup) into `Timeline` values.
+/// Parses Nitter timeline pages into `Timeline` values.
 ///
 /// Selectors follow the upstream templates (`views/tweet.nim`,
 /// `views/timeline.nim`, `views/renderutils.nim`), e.g.:

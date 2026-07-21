@@ -19,7 +19,7 @@ struct Tweet: Identifiable, Hashable, Sendable, Codable {
     let avatarURL: URL?
     let date: Date?
     let text: String
-    /// Absolute URL of the status page on xcancel.
+    /// Absolute URL of the status page on the Nitter instance.
     let statusURL: URL?
     let replyCount: Int
     let retweetCount: Int
@@ -91,7 +91,7 @@ struct AccountInfo: Sendable, Hashable, Codable {
     let avatarURL: URL?
 }
 
-/// Result of parsing one xcancel timeline page.
+/// Result of parsing one Nitter timeline page.
 struct Timeline: Sendable, Codable {
     var tweets: [Tweet]
     var account: AccountInfo?

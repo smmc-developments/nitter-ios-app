@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-const dataDir = mkdtempSync(join(tmpdir(), 'xcancel-db-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'nitter-db-'));
 process.env.DATA_DIR = dataDir;
 const database = await import('../src/db.js');
 

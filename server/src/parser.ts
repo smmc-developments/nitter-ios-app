@@ -2,7 +2,7 @@ import * as cheerio from 'cheerio';
 import type { TweetRow } from './db.js';
 import { normalizeTweetDate } from './dates.js';
 
-// Port of XCancel/TimelineParser.swift selectors to Cheerio.
+// Port of Nitter/TimelineParser.swift selectors to Cheerio.
 // Selectors follow upstream Nitter templates (views/tweet.nim, views/timeline.nim).
 
 const NITTER_BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.poast.org';

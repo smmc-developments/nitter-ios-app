@@ -1,5 +1,5 @@
 import XCTest
-@testable import XCancel
+@testable import Nitter
 
 final class TimelineCacheTests: XCTestCase {
 

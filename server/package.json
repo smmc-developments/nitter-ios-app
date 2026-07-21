@@ -1,5 +1,5 @@
 {
-  "name": "xcancel-server",
+  "name": "nitter-server",
   "version": "1.0.0",
   "type": "module",
   "scripts": {

@@ -2,7 +2,7 @@ import Foundation
 import WebKit
 import UIKit
 
-/// Solves xcancel.com's JavaScript anti-bot challenge by loading a page in a
+/// Solves the Nitter instance's JavaScript anti-bot challenge by loading a page in a
 /// real (hidden) `WKWebView`. WebKit executes the challenge JS, the site sets
 /// session cookies, and we harvest them into `HTTPCookieStorage.shared` so
 /// plain `URLSession` requests (and `AsyncImage`) are authorized afterwards.
@@ -71,6 +71,6 @@ final class ChallengeBootstrapper {
     private func saveUserAgent(from webView: WKWebView) async {
         guard let ua = try? await webView.evaluateJavaScript("navigator.userAgent") as? String,
               !ua.isEmpty else { return }
-        UserDefaults.standard.set(ua, forKey: XCancelClient.userAgentDefaultsKey)
+        UserDefaults.standard.set(ua, forKey: NitterClient.userAgentDefaultsKey)
     }
 }

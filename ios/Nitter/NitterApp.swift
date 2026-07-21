@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct XCancelApp: App {
+struct NitterApp: App {
     @StateObject private var theme = ThemeManager()
 
     init() {

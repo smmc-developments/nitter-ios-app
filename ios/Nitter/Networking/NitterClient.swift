@@ -1,6 +1,6 @@
 import Foundation
 
-enum XCancelError: LocalizedError {
+enum NitterError: LocalizedError {
     case http(Int)
     case rateLimited(retryAfter: TimeInterval?)
     case challengeFailed
@@ -8,10 +8,10 @@ enum XCancelError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .http(let code): return "xcancel.com returned HTTP \(code)"
-        case .rateLimited: return "xcancel.com is rate-limiting requests"
-        case .challengeFailed: return "Couldn't pass xcancel.com's anti-bot check"
-        case .badResponse: return "Unexpected response from xcancel.com"
+        case .http(let code): return "The Nitter instance returned HTTP \(code)"
+        case .rateLimited: return "The Nitter instance is rate-limiting requests"
+        case .challengeFailed: return "Couldn't pass the Nitter instance's anti-bot check"
+        case .badResponse: return "Unexpected response from the Nitter instance"
         }
     }
 
@@ -21,12 +21,13 @@ enum XCancelError: LocalizedError {
     }
 }
 
-/// Thin client for xcancel.com. Fetches timeline HTML with `URLSession`,
+/// Thin client for a Nitter instance. Fetches timeline HTML with `URLSession`,
 /// transparently delegating to `ChallengeBootstrapper` when the site answers
 /// with its JavaScript anti-bot challenge (HTTP 503).
-actor XCancelClient {
-    static let shared = XCancelClient()
-    static let userAgentDefaultsKey = "xcancel.userAgent"
+actor NitterClient {
+    static let shared = NitterClient()
+    static let userAgentDefaultsKey = "nitter.userAgent"
+    private static let legacyUserAgentDefaultsKey = "xcancel.userAgent"
 
     /// Base inter-request delay in seconds when fetching multiple accounts.
     static let baseRequestDelay: TimeInterval = 2.0
@@ -35,6 +36,13 @@ actor XCancelClient {
     private let session: URLSession
 
     private init() {
+        let defaults = UserDefaults.standard
+        if defaults.string(forKey: Self.userAgentDefaultsKey) == nil,
+           let legacyUserAgent = defaults.string(forKey: Self.legacyUserAgentDefaultsKey) {
+            defaults.set(legacyUserAgent, forKey: Self.userAgentDefaultsKey)
+            defaults.removeObject(forKey: Self.legacyUserAgentDefaultsKey)
+        }
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.httpCookieStorage = .shared
@@ -62,7 +70,7 @@ actor XCancelClient {
             // 429 Rate Limited: exponential backoff + retry.
             if code == 429 {
                 guard retriesRemaining > 0 else {
-                    throw XCancelError.rateLimited(
+                    throw NitterError.rateLimited(
                         retryAfter: Self.parseRetryAfter(response)
                     )
                 }
@@ -75,17 +83,17 @@ actor XCancelClient {
 
             // Not rate limited — check for challenge.
             if !isChallenge(statusCode: code, html: html) {
-                guard code == 200 else { throw XCancelError.http(code) }
+                guard code == 200 else { throw NitterError.http(code) }
                 return html
             }
 
             // Challenge: solve only on first attempt.
             guard attempt == 0 else { break }
             let solved = await ChallengeBootstrapper.shared.ensureSession(path: path)
-            if !solved { throw XCancelError.challengeFailed }
+            if !solved { throw NitterError.challengeFailed }
         }
 
-        throw XCancelError.rateLimited(retryAfter: nil)
+        throw NitterError.rateLimited(retryAfter: nil)
     }
 
     private func isChallenge(statusCode: Int, html: String) -> Bool {

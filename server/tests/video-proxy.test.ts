@@ -8,7 +8,7 @@ import express from 'express';
 import type { Fetcher } from '../src/fetcher.js';
 import type { ImageCache } from '../src/image-cache.js';
 
-const dataDir = mkdtempSync(join(tmpdir(), 'xcancel-video-proxy-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'nitter-video-proxy-'));
 process.env.DATA_DIR = dataDir;
 const { createRouter } = await import('../src/routes.js');
 

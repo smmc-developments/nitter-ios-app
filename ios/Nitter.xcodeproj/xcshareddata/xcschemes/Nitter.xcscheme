@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "F4609C4DE735465BBA85CA0A"
-               BuildableName = "XCancel.app"
-               BlueprintName = "XCancel"
-               ReferencedContainer = "container:XCancel.xcodeproj">
+               BlueprintIdentifier = "C56D04629807A4F1D40195FF"
+               BuildableName = "Nitter.app"
+               BlueprintName = "Nitter"
+               ReferencedContainer = "container:Nitter.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -32,10 +32,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F4609C4DE735465BBA85CA0A"
-            BuildableName = "XCancel.app"
-            BlueprintName = "XCancel"
-            ReferencedContainer = "container:XCancel.xcodeproj">
+            BlueprintIdentifier = "C56D04629807A4F1D40195FF"
+            BuildableName = "Nitter.app"
+            BlueprintName = "Nitter"
+            ReferencedContainer = "container:Nitter.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -45,10 +45,10 @@
             testExecutionOrdering = "random">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "2C7CAD51A59329EF8A1B9E82"
-               BuildableName = "XCancelTests.xctest"
-               BlueprintName = "XCancelTests"
-               ReferencedContainer = "container:XCancel.xcodeproj">
+               BlueprintIdentifier = "FE16D0CF92FBE77037886181"
+               BuildableName = "NitterTests.xctest"
+               BlueprintName = "NitterTests"
+               ReferencedContainer = "container:Nitter.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -69,10 +69,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F4609C4DE735465BBA85CA0A"
-            BuildableName = "XCancel.app"
-            BlueprintName = "XCancel"
-            ReferencedContainer = "container:XCancel.xcodeproj">
+            BlueprintIdentifier = "C56D04629807A4F1D40195FF"
+            BuildableName = "Nitter.app"
+            BlueprintName = "Nitter"
+            ReferencedContainer = "container:Nitter.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -86,10 +86,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "F4609C4DE735465BBA85CA0A"
-            BuildableName = "XCancel.app"
-            BlueprintName = "XCancel"
-            ReferencedContainer = "container:XCancel.xcodeproj">
+            BlueprintIdentifier = "C56D04629807A4F1D40195FF"
+            BuildableName = "Nitter.app"
+            BlueprintName = "Nitter"
+            ReferencedContainer = "container:Nitter.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

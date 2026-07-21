@@ -1,6 +1,6 @@
 services:
-  xcancel:
-    image: ghcr.io/smmc-developments/nitter-ios-app:${XCANCEL_VERSION:-latest}
+  nitter:
+    image: ghcr.io/smmc-developments/nitter-ios-app:${NITTER_VERSION:-${XCANCEL_VERSION:-latest}}
     ports:
       - "${HOST_PORT:-3000}:3000"
     environment:
@@ -16,11 +16,11 @@ services:
       INCLUDE_REPLIES: ${INCLUDE_REPLIES:-true}
       MAX_PARENT_ENRICHMENTS: ${MAX_PARENT_ENRICHMENTS:-20}
     volumes:
-      - xcancel-data:/app/data
+      - nitter-data:/app/data
     init: true
     shm_size: 1gb
     restart: unless-stopped
 
 volumes:
-  xcancel-data:
+  nitter-data:
     name: nitter-ios-app-data

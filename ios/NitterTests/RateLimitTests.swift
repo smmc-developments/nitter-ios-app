@@ -1,12 +1,12 @@
 import XCTest
-@testable import XCancel
+@testable import Nitter
 
 final class RateLimitTests: XCTestCase {
 
     func testBackoffIncreasesExponentially() {
-        let b0 = XCancelClient.backoff(attempt: 0)
-        let b1 = XCancelClient.backoff(attempt: 1)
-        let b2 = XCancelClient.backoff(attempt: 2)
+        let b0 = NitterClient.backoff(attempt: 0)
+        let b1 = NitterClient.backoff(attempt: 1)
+        let b2 = NitterClient.backoff(attempt: 2)
         // Base is 2s: 2*2^0=2, 2*2^1=4, 2*2^2=8 (plus jitter).
         XCTAssertGreaterThanOrEqual(b0, 2.0)
         XCTAssertLessThan(b0, 2.6)
@@ -18,19 +18,19 @@ final class RateLimitTests: XCTestCase {
 
     func testBackoffWithRetryAfter() {
         // Retry-After should win when it's larger than the computed backoff.
-        let b = XCancelClient.backoff(attempt: 0, retryAfter: 5.0)
+        let b = NitterClient.backoff(attempt: 0, retryAfter: 5.0)
         XCTAssertGreaterThanOrEqual(b, 5.0)
     }
 
     func testBackoffRetryAfterSmallerThanComputed() {
         // Computed wins when Retry-After is tiny.
-        let b = XCancelClient.backoff(attempt: 2, retryAfter: 0.1)
+        let b = NitterClient.backoff(attempt: 2, retryAfter: 0.1)
         XCTAssertGreaterThanOrEqual(b, 4.0)
     }
 
     func testParseRetryAfterSeconds() {
         let response = fakeResponse(headers: ["Retry-After": "10"])
-        XCTAssertEqual(XCancelClient.parseRetryAfter(response), 10.0)
+        XCTAssertEqual(NitterClient.parseRetryAfter(response), 10.0)
     }
 
     func testParseRetryAfterHTTPDate() {
@@ -41,20 +41,20 @@ final class RateLimitTests: XCTestCase {
         formatter.timeZone = TimeZone(identifier: "UTC")
         let dateStr = formatter.string(from: future)
         let response = fakeResponse(headers: ["Retry-After": dateStr])
-        let parsed = XCancelClient.parseRetryAfter(response)
+        let parsed = NitterClient.parseRetryAfter(response)
         XCTAssertNotNil(parsed)
         XCTAssertGreaterThanOrEqual(parsed!, 25) // ~30s minus clock slop
     }
 
     func testParseRetryAfterMissing() {
         let response = fakeResponse(headers: [:])
-        XCTAssertNil(XCancelClient.parseRetryAfter(response))
+        XCTAssertNil(NitterClient.parseRetryAfter(response))
     }
 
-    func testXCancelErrorIsRateLimited() {
-        XCTAssertTrue(XCancelError.rateLimited(retryAfter: nil).isRateLimited)
-        XCTAssertFalse(XCancelError.http(429).isRateLimited)
-        XCTAssertFalse(XCancelError.challengeFailed.isRateLimited)
+    func testNitterErrorIsRateLimited() {
+        XCTAssertTrue(NitterError.rateLimited(retryAfter: nil).isRateLimited)
+        XCTAssertFalse(NitterError.http(429).isRateLimited)
+        XCTAssertFalse(NitterError.challengeFailed.isRateLimited)
     }
 
     // MARK: - Helpers

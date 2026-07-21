@@ -2,7 +2,7 @@ import SwiftUI
 import SafariServices
 
 /// In-app browser used to open a tweet's page (thread, replies, video
-/// playback) on xcancel.com.
+/// playback) on the source Nitter instance.
 struct SafariView: UIViewControllerRepresentable {
     let url: URL
 

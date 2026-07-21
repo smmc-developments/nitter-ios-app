@@ -86,7 +86,7 @@ async function main() {
       + 'For isolated local testing only, set ALLOW_INSECURE_NO_AUTH=true.',
     );
   }
-  log('Starting xcancel server...');
+  log('Starting Nitter server...');
   log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, API_KEY=${API_KEY ? '(set)' : '(not set)'}`);
 
   const fetcher = new Fetcher();

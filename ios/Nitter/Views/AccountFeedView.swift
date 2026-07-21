@@ -19,7 +19,7 @@ struct AccountFeedView: View {
                 ContentUnavailableView(
                     "Couldn't Load",
                     systemImage: "exclamationmark.triangle",
-                    description: Text("xcancel.com returned an error for @\(username).")
+                    description: Text("The Nitter instance returned an error for @\(username).")
                 )
             } else if tweets.isEmpty {
                 ContentUnavailableView("No Posts", systemImage: "tray")

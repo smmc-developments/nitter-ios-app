@@ -1,5 +1,5 @@
 services:
-  xcancel:
+  nitter:
     build: .
     ports:
       - "3000:3000"
@@ -15,8 +15,10 @@ services:
       INCLUDE_REPLIES: ${INCLUDE_REPLIES:-true}
       MAX_PARENT_ENRICHMENTS: ${MAX_PARENT_ENRICHMENTS:-20}
     volumes:
-      - xcancel-data:/app/data
+      - nitter-data:/app/data
     restart: unless-stopped
 
 volumes:
-  xcancel-data:
+  nitter-data:
+    # Preserve the volume created by the original development Compose project.
+    name: server_xcancel-data
