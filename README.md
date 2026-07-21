@@ -36,19 +36,85 @@ open XCancel.xcodeproj
 
 ## Server
 
-### Quick Start (Docker)
+### Production Deployment (Docker Compose)
+
+The release Compose file pulls the published image from GitHub Container Registry instead of building it locally. Docker Compose reads deployment settings from `server/.env`.
 
 ```bash
 cd server
-
-# Create your .env (at minimum, set API_KEY)
 cp .env.example .env
-# Edit .env and set API_KEY to a long random secret
-
-docker compose up --build -d
+openssl rand -hex 32
+openssl rand -hex 32
 ```
 
-The server runs on `http://localhost:3000`.
+Put the two generated values in `.env` as `API_KEY` and `PROXY_SECRET`. They must be different and remain stable across upgrades. Enter `API_KEY` in the iOS app's Settings tab. Do not commit `.env`.
+
+Set `XCANCEL_VERSION` to a released version such as `1.0.1` for reproducible deployments, or leave it as `latest` to track the newest release. If the GHCR package is private, authenticate using a GitHub personal access token with `read:packages`:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io --username YOUR_GITHUB_USERNAME --password-stdin
+```
+
+Pull and start the service:
+
+```bash
+docker compose -f docker-compose.release.yml pull
+docker compose -f docker-compose.release.yml up -d
+docker compose -f docker-compose.release.yml logs -f
+```
+
+The server is available at `http://localhost:3000` by default. Set `HOST_PORT` in `.env` to expose a different host port. For internet-facing deployments, place it behind an HTTPS reverse proxy and do not expose port 3000 directly.
+
+#### Persistent Data
+
+The release Compose file uses the explicitly named Docker volume `nitter-ios-app-data`, mounted at `/app/data`. Container recreation and image upgrades preserve:
+
+- `xcancel.db` — accounts, tweets, cursors, and timeline membership
+- `images/` — cached image data
+- `proxy-secret` — fallback media signing secret
+
+Inspect the volume with:
+
+```bash
+docker volume inspect nitter-ios-app-data
+```
+
+Back it up before upgrades:
+
+```bash
+docker run --rm \
+  -v nitter-ios-app-data:/data:ro \
+  -v "$PWD":/backup \
+  alpine tar czf /backup/nitter-ios-app-data.tar.gz -C /data .
+```
+
+#### Upgrades
+
+Update `XCANCEL_VERSION` in `.env`, then recreate the service using the new image:
+
+```bash
+docker compose -f docker-compose.release.yml pull
+docker compose -f docker-compose.release.yml up -d --remove-orphans
+docker image prune -f
+```
+
+To stop the service without deleting persistent data:
+
+```bash
+docker compose -f docker-compose.release.yml down
+```
+
+Do not pass `--volumes` to `docker compose down` unless you intend to delete the database and media cache.
+
+### Local Docker Build
+
+Use the development Compose file to build the server from the current checkout:
+
+```bash
+cd server
+cp .env.example .env
+docker compose up --build -d
+```
 
 ### Local Development (macOS)
 
@@ -74,8 +140,9 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | Variable | Default | Description |
 |---|---|---|
 | `API_KEY` | *(required)* | Bearer token for API authentication |
-| `PROXY_SECRET` | *(auto-generated)* | HMAC signing key for media URLs. Set explicitly to persist across restarts |
+| `PROXY_SECRET` | *(required by release Compose)* | Stable HMAC signing key for media URLs |
 | `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
+| `NITTER_BASE_URL` | `https://nitter.poast.org` | Nitter instance used for timelines and media |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
 | `MAX_ACCOUNTS_PER_CYCLE` | `40` | Max accounts fetched per automatic cycle |
 | `FETCH_CONCURRENCY` | `2` | Simultaneous fetch requests |
@@ -83,6 +150,8 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `MAX_PAGES_PER_ACCOUNT` | `5` | Pages to follow per account for backfill |
 | `INCLUDE_REPLIES` | `true` | Include replies in timeline |
 | `MAX_PARENT_ENRICHMENTS` | `20` | Parent context fetches per cycle |
+
+The release Compose file also accepts `XCANCEL_VERSION` (`latest`) and `HOST_PORT` (`3000`) for image selection and host port mapping. `PORT`, `DATA_DIR`, `CHROME_PATH`, and `NODE_ENV` are configured inside the image and should not be overridden.
 
 ### API Endpoints
 
