@@ -42,3 +42,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: local.xcancel.XCancelTests
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: "5.0"
+
+schemes:
+  XCancel:
+    build:
+      targets:
+        XCancel: all
+    test:
+      targets:
+        - name: XCancelTests
+          parallelizable: true
+          randomExecutionOrder: true

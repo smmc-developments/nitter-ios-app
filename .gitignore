@@ -1,6 +1,6 @@
 # Xcode
-*.xcodeproj/project.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
+**/*.xcodeproj/project.xcworkspace/xcuserdata/
+**/*.xcodeproj/xcuserdata/
 DerivedData/
 *.xcuserstate
 *.xcscmblueprint
@@ -18,5 +18,4 @@ server/data/.user-agent
 .DS_Store
 Thumbs.db
 
-# XcodeGen generated (keep project.yml)
-# *.xcodeproj is tracked
+# XcodeGen generated projects are tracked; keep project.yml as their source.

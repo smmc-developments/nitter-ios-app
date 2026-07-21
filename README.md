@@ -126,6 +126,32 @@ Nitter's `/pic/` URLs return 503 to plain clients. The server proxies all media 
 
 Video content is proxied with HTTP range support for seeking, and played natively via AVPlayer.
 
+## CI/CD
+
+Pull requests into `main` run the GitHub Actions CI workflow:
+
+- Type-check and test the Node.js server
+- Build the server Docker image
+- Generate the Xcode project, build the iOS app, and run its unit tests in a simulator
+- Upload the iOS `.xcresult` bundle for troubleshooting
+
+Pushes to `main` verify the server and then run [semantic-release](https://semantic-release.gitbook.io/). Releases follow Conventional Commits:
+
+| Commit | Release |
+|---|---|
+| `fix: correct media URL parsing` | Patch (`1.0.1`) |
+| `feat: add account groups` | Minor (`1.1.0`) |
+| `feat!: replace the API format` | Major (`2.0.0`) |
+| `docs:`, `test:`, `ci:`, `chore:` | No release |
+
+Each release creates a Git tag and GitHub release, then publishes multi-architecture (`linux/amd64` and `linux/arm64`) images to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/smmc-developments/nitter-ios-app:latest
+```
+
+Images are tagged with the full version, minor version, major version, and `latest`, for example `1.2.3`, `1.2`, `1`, and `latest`.
+
 ## License
 
 Private
