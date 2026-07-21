@@ -1,0 +1,131 @@
+# Nitter iOS App
+
+An iOS client for reading Twitter/X timelines through Nitter, with a companion Node.js server that handles anti-bot bypass, feed aggregation, and media proxying.
+
+## How It Works
+
+Twitter/X content is accessed through public Nitter instances (xcancel.com, nitter.poast.org). These instances enforce a JavaScript anti-bot challenge that blocks plain HTTP clients and all headless browsers. The companion server solves this by launching a real system Chrome browser via Chrome DevTools Protocol, then uses Playwright to interact with it.
+
+The server fetches timelines, stores tweets in SQLite, and serves a REST API. The iOS app consumes this API for a clean, native reading experience.
+
+## Project Structure
+
+```
+ios/          Xcode project (iOS 17+, SwiftUI, Swift 6)
+server/       Node.js server (TypeScript, Express, Playwright, Chromium)
+```
+
+## iOS App
+
+- **Feed** — Merged, deduplicated timeline from all watched accounts with pull-to-refresh
+- **Accounts** — Add/remove Twitter handles, CSV import, automatic background fetching
+- **Settings** — Server URL, API key, System/Light/Dark appearance toggle
+- **Tweet Detail** — Full tweet view with reply chain, parent context, in-app navigation
+- **Media** — Photo grid (single full-width, multi two-column), video playback via native AVPlayer
+- **Links** — Clickable URLs detected and rendered inline in tweet text
+
+### Build
+
+Requires Xcode 16+ and macOS. Uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) — regenerate the Xcode project from `ios/project.yml` after any file changes.
+
+```bash
+cd ios
+xcodegen generate
+open XCancel.xcodeproj
+```
+
+## Server
+
+### Quick Start (Docker)
+
+```bash
+cd server
+
+# Create your .env (at minimum, set API_KEY)
+cp .env.example .env
+# Edit .env and set API_KEY to a long random secret
+
+docker compose up --build -d
+```
+
+The server runs on `http://localhost:3000`.
+
+### Local Development (macOS)
+
+Requires Node.js 20+ and Chromium installed (via `npx playwright install chromium`).
+
+```bash
+cd server
+npm install
+cp .env.example .env
+# Edit .env and set API_KEY
+
+npm run dev
+```
+
+### API Key
+
+The server uses bearer token authentication. Set `API_KEY` in `.env` and enter the same value in the iOS app's Settings tab. The one exception is the media proxy (`/api/proxy`), which uses signed HMAC URLs instead.
+
+Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
+
+### Configuration
+
+| Variable | Default | Description |
+|---|---|---|
+| `API_KEY` | *(required)* | Bearer token for API authentication |
+| `PROXY_SECRET` | *(auto-generated)* | HMAC signing key for media URLs. Set explicitly to persist across restarts |
+| `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
+| `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
+| `MAX_ACCOUNTS_PER_CYCLE` | `40` | Max accounts fetched per automatic cycle |
+| `FETCH_CONCURRENCY` | `2` | Simultaneous fetch requests |
+| `FETCH_START_INTERVAL_MS` | `1000` | Delay between starting each fetch |
+| `MAX_PAGES_PER_ACCOUNT` | `5` | Pages to follow per account for backfill |
+| `INCLUDE_REPLIES` | `true` | Include replies in timeline |
+| `MAX_PARENT_ENRICHMENTS` | `20` | Parent context fetches per cycle |
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/feed` | Bearer | Merged feed from all accounts (limit up to 1000) |
+| `GET` | `/api/accounts` | Bearer | List all watched accounts |
+| `POST` | `/api/accounts` | Bearer | Add accounts (`{ handles: ["handle1", "handle2"] }`) |
+| `DELETE` | `/api/accounts/:handle` | Bearer | Remove an account |
+| `GET` | `/api/tweets/:id` | Bearer | Tweet detail with replies |
+| `POST` | `/api/fetch` | Bearer | Trigger an immediate fetch cycle |
+| `GET` | `/api/status` | — | Server status |
+| `GET` | `/api/proxy` | Signed URL | Proxy images and video |
+
+### Data
+
+Persistent data is stored in a Docker volume at `/app/data/`:
+- `tweets.db` — SQLite database (tweets, accounts, timeline membership)
+- `images/` — Cached media files (512 MB limit, 7-day expiry)
+- `proxy-secret` — Auto-generated HMAC key (persists across restarts)
+
+## How It Works (Details)
+
+### Anti-Bot Bypass
+
+All headless browsers (Puppeteer stealth, Playwright, etc.) are detected by BotD fingerprinting. The server launches a real system Chrome with `--remote-debugging-port`, connects via Playwright's `connectOverCDP`, and solves the challenge once at startup. Subsequent requests use the browser's HTTP context directly.
+
+On macOS, Chrome runs with the native display. On Linux/Docker, `xvfb` provides a virtual display.
+
+### Feed Scheduling
+
+Accounts are prioritized by activity: new > active (24h) > warm (7d) > dormant (7d+). Each account tracks its own cursor position for pagination. The observation-based retention window keeps tweets for 7 days.
+
+### Retweet Attribution
+
+Nitter multi-user pages only show the retweeter's display name, not their handle. The server resolves this by fetching individual account pages and joining via a `tweet_timelines` table, enabling per-account retweet attribution.
+
+### Media Proxy
+
+Nitter's `/pic/` URLs return 503 to plain clients. The server proxies all media through the browser context with signed HMAC URLs (stable for ~24 hours). The iOS app uses `CachedAsyncImage` with request coalescing for efficient loading.
+
+Video content is proxied with HTTP range support for seeking, and played natively via AVPlayer.
+
+## License
+
+Private
