@@ -1,0 +1,44 @@
+name: XCancel
+options:
+  bundleIdPrefix: local.xcancel
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  SwiftSoup:
+    url: https://github.com/scinfu/SwiftSoup
+    from: 2.7.0
+
+targets:
+  XCancel:
+    type: application
+    platform: iOS
+    sources:
+      - path: XCancel
+    info:
+      path: XCancel/Info.plist
+      properties:
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    dependencies:
+      - package: SwiftSoup
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.xcancel.XCancel
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+
+  XCancelTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: XCancelTests
+    dependencies:
+      - target: XCancel
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.xcancel.XCancelTests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.0"

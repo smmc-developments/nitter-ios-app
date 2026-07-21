@@ -1,0 +1,22 @@
+# Xcode
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+
+# Node
+node_modules/
+server/data/*.db
+server/data/*.db-*
+server/dist/
+server/data/images/
+server/data/proxy-secret
+server/data/.user-agent
+
+# OS
+.DS_Store
+Thumbs.db
+
+# XcodeGen generated (keep project.yml)
+# *.xcodeproj is tracked
