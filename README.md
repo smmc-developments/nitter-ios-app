@@ -1,18 +1,19 @@
-# Nitter iOS App
+# Nitter Apps
 
-An iOS client for reading Twitter/X timelines through Nitter, with a companion Node.js server that handles anti-bot bypass, feed aggregation, and media proxying.
+Native iOS and responsive web clients for reading Twitter/X timelines through Nitter, with a companion Node.js server that handles anti-bot bypass, feed aggregation, and media proxying.
 
 ## How It Works
 
 Twitter/X content is accessed through public Nitter instances (xcancel.com, nitter.poast.org). These instances enforce a JavaScript anti-bot challenge that blocks plain HTTP clients and all headless browsers. The companion server solves this by launching a real system Chrome browser via Chrome DevTools Protocol, then uses Playwright to interact with it.
 
-The server fetches timelines, stores tweets in SQLite, and serves a REST API. The iOS app consumes this API for a clean, native reading experience.
+The server fetches timelines, stores tweets in SQLite, and serves a REST API plus the production web app. Both clients use the same accounts, feed, and signed media URLs.
 
 ## Project Structure
 
 ```
 ios/          Xcode project (iOS 17+, SwiftUI, Swift 6)
 server/       Node.js server (TypeScript, Express, Playwright, Chromium)
+web/          Responsive web app (React, TypeScript, Vite)
 ```
 
 ## iOS App
@@ -34,6 +35,20 @@ xcodegen generate
 open Nitter.xcodeproj
 ```
 
+## Web App
+
+The Docker image serves the web app at the server root. Set `WEB_USERNAME` and `WEB_PASSWORD` to protect it with the browser's HTTP Basic login prompt. These credentials protect only the web pages and assets; `/api` continues to use `API_KEY`, which must be entered under **Settings** on first use and is stored only in that browser.
+
+Both web credential variables must be set together or both left empty. For local frontend development, start the server on port 3000 and run:
+
+```bash
+cd web
+npm ci
+npm run dev
+```
+
+Vite proxies `/api` and `/health` to the local server. Run `npm run build` and `npm test` to validate production changes.
+
 ## Server
 
 ### Production Deployment (Docker Compose)
@@ -47,7 +62,7 @@ openssl rand -hex 32
 openssl rand -hex 32
 ```
 
-Put the two generated values in `.env` as `API_KEY` and `PROXY_SECRET`. They must be different and remain stable across upgrades. Enter `API_KEY` in the iOS app's Settings tab. Do not commit `.env`.
+Put the two generated values in `.env` as `API_KEY` and `PROXY_SECRET`. They must be different and remain stable across upgrades. Also set `WEB_USERNAME` and a strong `WEB_PASSWORD` for browser access. Enter `API_KEY` in the iOS app's Settings tab and web app Settings page. Do not commit `.env`.
 
 Set `NITTER_VERSION` to a released version such as `1.0.1` for reproducible deployments, or leave it as `latest` to track the newest release. If the GHCR package is private, authenticate using a GitHub personal access token with `read:packages`:
 

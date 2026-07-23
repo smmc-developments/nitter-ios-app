@@ -1,12 +1,16 @@
 services:
   nitter:
-    build: .
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
     ports:
       - "3000:3000"
     environment:
       FETCH_MINUTES: ${FETCH_MINUTES:-15}
       API_KEY: ${API_KEY:-}
       PROXY_SECRET: ${PROXY_SECRET:-}
+      WEB_USERNAME: ${WEB_USERNAME:-}
+      WEB_PASSWORD: ${WEB_PASSWORD:-}
       ALLOW_INSECURE_NO_AUTH: ${ALLOW_INSECURE_NO_AUTH:-false}
       MAX_ACCOUNTS_PER_CYCLE: ${MAX_ACCOUNTS_PER_CYCLE:-40}
       FETCH_CONCURRENCY: ${FETCH_CONCURRENCY:-2}

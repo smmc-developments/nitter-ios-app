@@ -43,7 +43,7 @@ jobs:
         run: npm test
 
       - name: Build Docker image
-        run: docker build --tag nitter-ios-app:release-check .
+        run: docker build --file Dockerfile --tag nitter-ios-app:release-check ..
 
   release:
     name: Semantic release

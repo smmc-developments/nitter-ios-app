@@ -1,3 +1,11 @@
+FROM node:22-slim AS web-build
+
+WORKDIR /build/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+RUN npm run build
+
 FROM node:22-slim
 
 # Build tools for better-sqlite3 + Chrome/Xvfb dependencies
@@ -26,13 +34,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY server/package.json server/package-lock.json ./
 RUN npm ci
 
-COPY tsconfig.json ./
-COPY src ./src
+COPY server/tsconfig.json ./
+COPY server/src ./src
 
 RUN npx tsc
+
+COPY --from=web-build /build/web/dist ./dist/web
 
 RUN npm prune --omit=dev
 

@@ -1,0 +1,8 @@
+.git
+.github
+ios
+**/node_modules
+**/dist
+server/data
+*.xcresult
+.DS_Store

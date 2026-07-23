@@ -6,6 +6,8 @@ services:
     environment:
       API_KEY: ${API_KEY:?Set API_KEY in .env}
       PROXY_SECRET: ${PROXY_SECRET:?Set PROXY_SECRET in .env}
+      WEB_USERNAME: ${WEB_USERNAME:-}
+      WEB_PASSWORD: ${WEB_PASSWORD:-}
       ALLOW_INSECURE_NO_AUTH: ${ALLOW_INSECURE_NO_AUTH:-false}
       NITTER_BASE_URL: ${NITTER_BASE_URL:-https://nitter.poast.org}
       FETCH_MINUTES: ${FETCH_MINUTES:-15}

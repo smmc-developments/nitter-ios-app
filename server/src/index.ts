@@ -7,11 +7,16 @@ import type { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { DATA_DIR } from './paths.js';
+import { createWebAuthMiddleware } from './web-auth.js';
 
 const PORT = parseIntegerEnv('PORT', 3000, 1, 65_535);
 const FETCH_MINUTES = parseIntegerEnv('FETCH_MINUTES', 15, 1, 24 * 60);
 const API_KEY = process.env.API_KEY || '';
+const WEB_USERNAME = process.env.WEB_USERNAME || '';
+const WEB_PASSWORD = process.env.WEB_PASSWORD || '';
 const ALLOW_INSECURE_NO_AUTH = process.env.ALLOW_INSECURE_NO_AUTH === 'true';
 const PROXY_SECRET = loadProxySecret();
 
@@ -86,8 +91,9 @@ async function main() {
       + 'For isolated local testing only, set ALLOW_INSECURE_NO_AUTH=true.',
     );
   }
+  const webAuthMiddleware = createWebAuthMiddleware(WEB_USERNAME, WEB_PASSWORD);
   log('Starting Nitter server...');
-  log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, API_KEY=${API_KEY ? '(set)' : '(not set)'}`);
+  log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, API_KEY=${API_KEY ? '(set)' : '(not set)'}, WEB_AUTH=${WEB_USERNAME ? '(set)' : '(not set)'}`);
 
   const fetcher = new Fetcher();
   await fetcher.start();
@@ -124,6 +130,15 @@ async function main() {
 
   const router = createRouter(fetcher, scheduler, imageCache, PROXY_SECRET);
   app.use('/api', authMiddleware, router);
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
+
+  const webRoot = join(dirname(fileURLToPath(import.meta.url)), 'web');
+  const webIndex = join(webRoot, 'index.html');
+  if (existsSync(webIndex)) {
+    app.use(webAuthMiddleware, express.static(webRoot, { index: false, maxAge: '1h' }));
+    app.get('*', webAuthMiddleware, (_req, res) => res.sendFile(webIndex));
+    log(`Web app enabled from ${webRoot}`);
+  }
 
   app.listen(PORT, () => {
     log(`Listening on http://localhost:${PORT}${API_KEY ? ' (auth enabled)' : ' (no auth)'}`);

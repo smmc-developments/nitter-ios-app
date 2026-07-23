@@ -10,6 +10,8 @@ node_modules/
 server/data/*.db
 server/data/*.db-*
 server/dist/
+web/dist/
+*.tsbuildinfo
 server/data/images/
 server/data/proxy-secret
 server/data/.user-agent
