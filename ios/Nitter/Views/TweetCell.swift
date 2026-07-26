@@ -154,9 +154,24 @@ struct TweetCell: View {
             statView(systemImage: "heart", count: tweet.likeCount)
             statView(systemImage: "eye", count: tweet.viewCount)
             Spacer()
+            if let shareURL {
+                ShareLink(item: shareURL) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Share post")
+            }
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+
+    private var shareURL: URL? {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "x.com"
+        components.path = "/\(tweet.authorHandle)/status/\(tweet.id)"
+        return components.url ?? tweet.statusURL
     }
 
     private func statView(systemImage: String, count: Int) -> some View {
