@@ -3,6 +3,9 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
 import path from 'path';
 import type { Fetcher } from './fetcher.js';
 import { DATA_DIR } from './paths.js';
+import { createLogger } from './logger.js';
+
+const log = createLogger('image-cache');
 
 const CACHE_DIR = path.join(DATA_DIR, 'images');
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -71,7 +74,7 @@ export class ImageCache {
         try {
           await this.get(url);
         } catch (err) {
-          console.error(`[${new Date().toISOString()}] [image-cache] Prefetch failed: ${String(err)}`);
+          log.error(`Prefetch failed: ${String(err)}`);
         } finally {
           this.queued.delete(url);
         }

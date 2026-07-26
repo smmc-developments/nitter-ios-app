@@ -8,6 +8,7 @@ import {
 } from './db.js';
 import { cursorPath, selectAccountsForCycle } from './scheduling.js';
 import type { ImageCache } from './image-cache.js';
+import { createLogger } from './logger.js';
 
 const CONCURRENCY = parsePositiveInt(process.env.FETCH_CONCURRENCY, 2);
 const REQUEST_START_INTERVAL_MS = parsePositiveInt(process.env.FETCH_START_INTERVAL_MS, 1_000);
@@ -16,10 +17,7 @@ const MAX_PAGES_PER_ACCOUNT = parsePositiveInt(process.env.MAX_PAGES_PER_ACCOUNT
 const INCLUDE_REPLIES = process.env.INCLUDE_REPLIES !== 'false';
 const MAX_PARENT_ENRICHMENTS = parsePositiveInt(process.env.MAX_PARENT_ENRICHMENTS, 20);
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [scheduler] ${msg}`);
-}
+const log = createLogger('scheduler');
 
 export class Scheduler {
   private fetcher: Fetcher;
@@ -39,9 +37,9 @@ export class Scheduler {
 
   start() {
     log('Starting scheduler...');
-    void this.run().catch(err => log(`Initial cycle failed: ${String(err)}`));
+    void this.run().catch(err => log.error(`Initial cycle failed: ${String(err)}`));
     this.timer = setInterval(() => {
-      void this.run().catch(err => log(`Scheduled cycle failed: ${String(err)}`));
+      void this.run().catch(err => log.error(`Scheduled cycle failed: ${String(err)}`));
     }, this.intervalMs);
     log(`Timer set — next run in ${this.intervalMs / 1000}s`);
   }
@@ -136,7 +134,7 @@ export class Scheduler {
         return { parsed, inserted: parsed };
       } catch (err: any) {
         const msg = err?.message ?? String(err);
-        console.error(`[${new Date().toISOString()}] [scheduler] @${account.username} FAILED: ${msg}`);
+        log.error(`@${account.username} FAILED: ${msg}`);
         updateAccountFetch(account.username, { error: msg });
         return { parsed: 0, inserted: 0 };
       }
@@ -184,7 +182,7 @@ export class Scheduler {
       log(`@${username}: parent context ${parent ? 'found' : 'unavailable'} for ${replyId}`);
     } catch (err) {
       storeParentTweet(replyId, null, 'failed');
-      log(`@${username}: parent context failed for ${replyId}: ${String(err)}`);
+      log.warn(`@${username}: parent context failed for ${replyId}: ${String(err)}`);
     }
   }
 

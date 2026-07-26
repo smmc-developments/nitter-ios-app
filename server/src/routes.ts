@@ -8,16 +8,14 @@ import {
 import { parseTimeline } from './parser.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
+import { createLogger } from './logger.js';
 
 interface FetchScheduler {
   readonly isRunning: boolean;
   run(fullRefresh?: boolean): Promise<void>;
 }
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [routes] ${msg}`);
-}
+const log = createLogger('routes');
 
 export function createRouter(
   fetcher: Fetcher,
@@ -31,7 +29,7 @@ router.post('/fetch', (_req, res) => {
   if (scheduler.isRunning) {
     return res.status(409).json({ error: 'Fetch already in progress' });
   }
-  void scheduler.run(true).catch(err => log(`Client-triggered fetch failed: ${String(err)}`));
+  void scheduler.run(true).catch(err => log.error(`Client-triggered fetch failed: ${String(err)}`));
   res.json({ ok: true, message: 'Fetch started' });
 });
 
@@ -115,7 +113,7 @@ router.get('/tweet/:username/:id', async (req, res) => {
     });
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error(`[${new Date().toISOString()}] [routes] GET /tweet/${username}/${tweetId} FAILED: ${msg}`);
+    log.error(`GET /tweet/${username}/${tweetId} FAILED: ${msg}`);
     res.status(502).json({ error: msg });
   }
 });
@@ -160,7 +158,7 @@ router.get('/proxy', async (req, res) => {
       if (req.method === 'HEAD' || !upstream.body) return res.end();
       pipeline(Readable.fromWeb(upstream.body as any), res, err => {
         if (err && err.name !== 'AbortError' && (err as NodeJS.ErrnoException).code !== 'ERR_STREAM_PREMATURE_CLOSE') {
-          log(`GET /proxy — video stream failed: ${err.message}`);
+          log.warn(`GET /proxy — video stream failed: ${err.message}`);
         }
       });
       return;
@@ -174,7 +172,7 @@ router.get('/proxy', async (req, res) => {
     res.status(200).send(image.body);
   } catch (err: any) {
     const msg = err?.message ?? String(err);
-    console.error(`[${new Date().toISOString()}] [routes] GET /proxy FAILED: ${msg}`);
+    log.error(`GET /proxy FAILED: ${msg}`);
     res.status(502).json({ error: msg });
   }
 });

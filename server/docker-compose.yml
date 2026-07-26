@@ -7,6 +7,7 @@ services:
       - "3000:3000"
     environment:
       FETCH_MINUTES: ${FETCH_MINUTES:-15}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       API_KEY: ${API_KEY:-}
       PROXY_SECRET: ${PROXY_SECRET:-}
       WEB_USERNAME: ${WEB_USERNAME:-}

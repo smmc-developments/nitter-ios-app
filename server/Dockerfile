@@ -51,6 +51,7 @@ USER node
 
 ENV CHROME_PATH=/usr/bin/chromium
 ENV NODE_ENV=production
+ENV LOG_LEVEL=info
 
 EXPOSE 3000
 

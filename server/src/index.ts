@@ -11,6 +11,7 @@ import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { DATA_DIR } from './paths.js';
 import { createWebAuthMiddleware } from './web-auth.js';
+import { createLogger } from './logger.js';
 
 const PORT = parseIntegerEnv('PORT', 3000, 1, 65_535);
 const FETCH_MINUTES = parseIntegerEnv('FETCH_MINUTES', 15, 1, 24 * 60);
@@ -20,10 +21,7 @@ const WEB_PASSWORD = process.env.WEB_PASSWORD || '';
 const ALLOW_INSECURE_NO_AUTH = process.env.ALLOW_INSECURE_NO_AUTH === 'true';
 const PROXY_SECRET = loadProxySecret();
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [index] ${msg}`);
-}
+const log = createLogger('index');
 
 function loadProxySecret(): string {
   if (process.env.PROXY_SECRET) return process.env.PROXY_SECRET;
@@ -63,13 +61,13 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
 
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
-    log(`Auth failed for ${req.method} ${req.path} — missing Authorization header`);
+    log.warn(`Auth failed for ${req.method} ${req.path} — missing Authorization header`);
     return res.status(401).json({ error: 'Missing Authorization header' });
   }
   const token = header.slice(7);
   // Constant-time comparison to prevent timing attacks
   if (token.length !== API_KEY.length || !timingSafeEqual(token, API_KEY)) {
-    log(`Auth failed for ${req.method} ${req.path} — invalid API key`);
+    log.warn(`Auth failed for ${req.method} ${req.path} — invalid API key`);
     return res.status(403).json({ error: 'Invalid API key' });
   }
   next();
@@ -93,7 +91,7 @@ async function main() {
   }
   const webAuthMiddleware = createWebAuthMiddleware(WEB_USERNAME, WEB_PASSWORD);
   log('Starting Nitter server...');
-  log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, API_KEY=${API_KEY ? '(set)' : '(not set)'}, WEB_AUTH=${WEB_USERNAME ? '(set)' : '(not set)'}`);
+  log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, LOG_LEVEL=${process.env.LOG_LEVEL || 'info'}, API_KEY=${API_KEY ? '(set)' : '(not set)'}, WEB_AUTH=${WEB_USERNAME ? '(set)' : '(not set)'}`);
 
   const fetcher = new Fetcher();
   await fetcher.start();
@@ -156,6 +154,6 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error(`[${new Date().toISOString()}] [index] FATAL: ${err}`);
+  log.error(`FATAL: ${err}`);
   process.exit(1);
 });

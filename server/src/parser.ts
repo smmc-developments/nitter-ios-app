@@ -1,16 +1,14 @@
 import * as cheerio from 'cheerio';
 import type { TweetRow } from './db.js';
 import { normalizeTweetDate } from './dates.js';
+import { createLogger } from './logger.js';
 
 // Port of Nitter/TimelineParser.swift selectors to Cheerio.
 // Selectors follow upstream Nitter templates (views/tweet.nim, views/timeline.nim).
 
 const NITTER_BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.poast.org';
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [parser] ${msg}`);
-}
+const log = createLogger('parser', 'debug');
 
 export interface ParseResult {
   tweets: TweetRow[];

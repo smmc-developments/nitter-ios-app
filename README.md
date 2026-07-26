@@ -171,6 +171,7 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
 | `NITTER_BASE_URL` | `https://nitter.poast.org` | Nitter instance used for timelines and media |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
+| `LOG_LEVEL` | `info` | Server output: `debug`, `info`, `warn`, `error`, or `silent` |
 | `MAX_ACCOUNTS_PER_CYCLE` | `40` | Max accounts fetched per automatic cycle |
 | `FETCH_CONCURRENCY` | `2` | Simultaneous fetch requests |
 | `FETCH_START_INTERVAL_MS` | `1000` | Delay between starting each fetch |

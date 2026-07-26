@@ -1,14 +1,12 @@
 import { chromium, type BrowserContext } from 'playwright';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
+import { createLogger } from './logger.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
 const BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.poast.org';
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [fetcher] ${msg}`);
-}
+const log = createLogger('fetcher');
 
 function findChromePath(): string {
   const envPath = process.env.CHROME_PATH;
@@ -98,13 +96,13 @@ export class Fetcher {
     }
 
     this.chrome.on('error', (err) => {
-      log(`Chrome process error: ${err.message}`);
+      log.error(`Chrome process error: ${err.message}`);
     });
     this.chrome.on('exit', (code, signal) => {
       this.ready = false;
       this.sessionReady = false;
       this.context = null;
-      log(`Chrome process exited: code=${code} signal=${signal}`);
+      log.warn(`Chrome process exited: code=${code} signal=${signal}`);
     });
 
     // Wait for Chrome to start its CDP server
@@ -162,7 +160,7 @@ export class Fetcher {
         await this.context.browser()?.close();
         log('Browser closed');
       } catch (err: any) {
-        log(`Error closing browser: ${err?.message}`);
+        log.warn(`Error closing browser: ${err?.message}`);
       }
     }
     this.context = null;
@@ -311,7 +309,7 @@ export class Fetcher {
             return;
           }
         } catch (err: any) {
-          log(`[${path}] Poll ${i + 1} error: ${err?.message}`);
+          log.debug(`[${path}] Poll ${i + 1} error: ${err?.message}`);
           throw err;
         }
       }

@@ -2,11 +2,9 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import { normalizeTweetDate } from './dates.js';
 import { DATA_DIR } from './paths.js';
+import { createLogger } from './logger.js';
 
-function log(msg: string) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] [db] ${msg}`);
-}
+const log = createLogger('db', 'debug');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 log(`Data directory: ${DATA_DIR}`);
