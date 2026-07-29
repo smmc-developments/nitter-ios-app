@@ -100,6 +100,12 @@ router.get('/tweet/:username/:id', async (req, res) => {
   const username = req.params.username.toLowerCase();
   const tweetId = req.params.id;
   log(`GET /tweet/${username}/${tweetId}`);
+  // Params are interpolated into the upstream request path — reject anything
+  // that could alter it (e.g. encoded slashes or dot segments).
+  if (!/^[a-z0-9_]{1,15}$/.test(username) || !/^\d{1,20}$/.test(tweetId)) {
+    log(`GET /tweet/${username}/${tweetId} — rejected invalid parameters (400)`);
+    return res.status(400).json({ error: 'Invalid username or tweet ID' });
+  }
   try {
     const html = await fetcher.fetchPage(`/${username}/status/${tweetId}`);
     const result = parseTimeline(html, username);
@@ -144,7 +150,16 @@ router.get('/proxy', async (req, res) => {
       const ifRange = req.headers['if-range'];
       if (ifRange) requestHeaders['if-range'] = Array.isArray(ifRange) ? ifRange[0] : ifRange;
       const method = req.method === 'HEAD' ? 'HEAD' : 'GET';
-      const upstream = await fetcher.fetchMedia(url, requestHeaders, abort.signal, method);
+      const upstream = await fetcher.fetchMedia(url, requestHeaders, abort.signal, method, isAllowedVideoUrl);
+      // Redirect hops are re-validated inside fetchMedia; here make sure the
+      // final response is actually a video so attacker-controlled HTML/JS is
+      // never served from this origin.
+      const contentType = (upstream.headers.get('content-type') ?? '').toLowerCase();
+      if (!contentType.startsWith('video/') && !contentType.startsWith('application/octet-stream')) {
+        await upstream.body?.cancel();
+        log.warn(`GET /proxy — rejected upstream content-type "${contentType.slice(0, 80)}" for ${url.slice(0, 120)}`);
+        return res.status(502).json({ error: 'Upstream response is not a video' });
+      }
       for (const name of [
         'content-type', 'content-length', 'content-range', 'accept-ranges',
         'etag', 'last-modified',

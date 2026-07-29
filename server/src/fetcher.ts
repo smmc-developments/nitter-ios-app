@@ -5,6 +5,8 @@ import { createLogger } from './logger.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
 const BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.poast.org';
+const MAX_MEDIA_REDIRECTS = 5;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 const log = createLogger('fetcher');
 
@@ -218,23 +220,17 @@ export class Fetcher {
     headers: Record<string, string>,
     signal: AbortSignal,
     method: 'GET' | 'HEAD' = 'GET',
+    isAllowedRedirect: (url: string) => boolean,
   ): Promise<Response> {
     if (!this.ready || !this.context) throw new Error('Fetcher not started');
     await this.ensureSession();
 
     for (let attempt = 0; attempt < 2; attempt++) {
       const cookies = await this.context.cookies(BASE_URL);
-      const response = await fetch(url, {
-        method,
-        headers: {
-          ...headers,
-          accept: 'video/mp4,video/*;q=0.9,*/*;q=0.5',
-          cookie: cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; '),
-          'user-agent': this.userAgent,
-        },
-        redirect: 'follow',
-        signal,
-      });
+      const cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      const response = await this.fetchMediaFollowingRedirects(
+        url, headers, signal, method, cookie, isAllowedRedirect,
+      );
       if (attempt === 0 && (response.status === 403 || response.status === 503)) {
         await response.body?.cancel();
         await this.ensureSession(true);
@@ -243,6 +239,50 @@ export class Fetcher {
       return response;
     }
     throw new Error('Unable to fetch video');
+  }
+
+  // Follows redirects manually so every hop is re-validated against the same
+  // allowlist as the initial URL. Blindly following redirects would let an
+  // allowlisted URL bounce the server to arbitrary (e.g. internal or
+  // attacker-controlled) hosts and stream the response back to clients.
+  private async fetchMediaFollowingRedirects(
+    initialUrl: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    method: 'GET' | 'HEAD',
+    cookie: string,
+    isAllowedRedirect: (url: string) => boolean,
+  ): Promise<Response> {
+    const baseHost = new URL(BASE_URL).host;
+    let currentUrl = initialUrl;
+    for (let redirectCount = 0; ; redirectCount++) {
+      const requestHeaders: Record<string, string> = {
+        ...headers,
+        accept: 'video/mp4,video/*;q=0.9,*/*;q=0.5',
+        'user-agent': this.userAgent,
+      };
+      // Session cookies are only for the Nitter origin — never leak them to
+      // redirect targets on other hosts.
+      if (new URL(currentUrl).host === baseHost) requestHeaders.cookie = cookie;
+      const response = await fetch(currentUrl, {
+        method,
+        headers: requestHeaders,
+        redirect: 'manual',
+        signal,
+      });
+      const location = response.headers.get('location');
+      if (!REDIRECT_STATUSES.has(response.status) || !location) return response;
+      await response.body?.cancel();
+      if (redirectCount >= MAX_MEDIA_REDIRECTS) {
+        throw new Error('Video redirected too many times');
+      }
+      const nextUrl = new URL(location, currentUrl).href;
+      if (!isAllowedRedirect(nextUrl)) {
+        log.warn(`fetchMedia — blocked redirect to disallowed URL: ${nextUrl.slice(0, 160)}`);
+        throw new Error('Video redirect target is not allowed');
+      }
+      currentUrl = nextUrl;
+    }
   }
 
   private async fetchWithRequest(path: string): Promise<string> {
