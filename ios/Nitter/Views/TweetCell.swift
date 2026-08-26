@@ -4,6 +4,8 @@ import AVKit
 
 struct TweetCell: View {
     let tweet: Tweet
+    @State private var showPhotoGallery = false
+    @State private var galleryStartIndex = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -125,22 +127,32 @@ struct TweetCell: View {
     @ViewBuilder
     private var media: some View {
         if !tweet.photoURLs.isEmpty {
-            let columns = tweet.photoURLs.count == 1
+            let photos = Array(tweet.photoURLs.prefix(4))
+            let columns = photos.count == 1
                 ? [GridItem(.flexible())]
                 : [GridItem(.flexible(), spacing: 4), GridItem(.flexible(), spacing: 4)]
             LazyVGrid(columns: columns, spacing: 4) {
-                ForEach(tweet.photoURLs.prefix(4), id: \.absoluteString) { url in
-                    CachedAsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    } placeholder: {
-                        Color("MediaPlaceholder")
+                ForEach(Array(photos.enumerated()), id: \.offset) { index, url in
+                    Button {
+                        galleryStartIndex = index
+                        showPhotoGallery = true
+                    } label: {
+                        CachedAsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFit()
+                        } placeholder: {
+                            Color("MediaPlaceholder")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(height: photos.count == 1 ? 320 : 170)
+                        .cornerRadius(8)
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .frame(height: tweet.photoURLs.count == 1 ? 320 : 170)
-                    .cornerRadius(8)
+                    .buttonStyle(.plain)
                 }
+            }
+            .fullScreenCover(isPresented: $showPhotoGallery) {
+                PhotoGalleryView(photos: photos, startIndex: galleryStartIndex)
             }
         } else if let poster = tweet.videoPosterURL {
             TweetVideoView(posterURL: poster, videoURL: tweet.videoURL)
@@ -264,7 +276,7 @@ struct CachedAsyncImage<Content: View, Placeholder: View>: View {
     }
 }
 
-private actor RemoteImageStore {
+actor RemoteImageStore {
     static let shared = RemoteImageStore()
 
     private let cache = NSCache<NSURL, UIImage>()

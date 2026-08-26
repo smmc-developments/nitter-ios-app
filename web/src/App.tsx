@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useState } from 'react';
+import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import { Account, api, Tweet } from './api';
 
@@ -42,12 +42,153 @@ function richText(text: string) {
     : <span key={index}>{part}</span>);
 }
 
+function Lightbox({ images, index, onClose }: { images: string[]; index: number; onClose: () => void }) {
+  const [current, setCurrent] = useState(index);
+  const [view, setView] = useState({ zoom: 1, x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef(view);
+  const drag = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null);
+  const moved = useRef(0);
+
+  const applyView = (next: { zoom: number; x: number; y: number }) => { viewRef.current = next; setView(next); };
+
+  const clampOffset = (zoom: number, x: number, y: number) => {
+    if (zoom <= 1) return { x: 0, y: 0 };
+    const halfX = (window.innerWidth * (zoom - 1)) / 2;
+    const halfY = (window.innerHeight * (zoom - 1)) / 2;
+    return { x: Math.max(-halfX, Math.min(halfX, x)), y: Math.max(-halfY, Math.min(halfY, y)) };
+  };
+  const clamp = (x: number, y: number) => clampOffset(viewRef.current.zoom, x, y);
+
+  const step = (delta: number) => {
+    setCurrent(previous => {
+      const next = (previous + delta + images.length) % images.length;
+      if (next !== previous) applyView({ zoom: 1, x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, []);
+
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
+      const { zoom, x, y } = viewRef.current;
+      const next = Math.max(1, Math.min(6, zoom * factor));
+      if (next === zoom) return;
+      const ratio = next / zoom;
+      applyView({ zoom: next, x: next <= 1 ? 0 : x * ratio, y: next <= 1 ? 0 : y * ratio });
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => element.removeEventListener('wheel', onWheel);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      else if (event.key === 'ArrowLeft') step(-1);
+      else if (event.key === 'ArrowRight') step(1);
+      else if (event.key === '+' || event.key === '=') applyView({ zoom: Math.min(6, viewRef.current.zoom * 1.25), x: 0, y: 0 });
+      else if (event.key === '-') applyView({ zoom: Math.max(1, viewRef.current.zoom / 1.25), x: 0, y: 0 });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ distance: number; cx: number; cy: number; zoom: number; x: number; y: number } | null>(null);
+  const pinched = useRef(false);
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLImageElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    moved.current = 0;
+    pinched.current = false;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = {
+        distance: Math.hypot(a.x - b.x, a.y - b.y),
+        cx: (a.x + b.x) / 2,
+        cy: (a.y + b.y) / 2,
+        ...viewRef.current,
+      };
+      drag.current = null;
+      setDragging(true);
+    } else if (viewRef.current.zoom > 1) {
+      drag.current = { px: event.clientX, py: event.clientY, ox: viewRef.current.x, oy: viewRef.current.y };
+    }
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLImageElement>) => {
+    const pointer = pointers.current.get(event.pointerId);
+    if (!pointer) return;
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    if (pointers.current.size === 2 && pinch.current) {
+      const [a, b] = [...pointers.current.values()];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      if (Math.abs(distance - pinch.current.distance) > 8) pinched.current = true;
+      const ratio = distance / pinch.current.distance;
+      const next = Math.max(1, Math.min(6, pinch.current.zoom * ratio));
+      const focalX = (a.x + b.x) / 2 - window.innerWidth / 2;
+      const focalY = (a.y + b.y) / 2 - window.innerHeight / 2;
+      const x = focalX * (1 - ratio) + pinch.current.x * ratio;
+      const y = focalY * (1 - ratio) + pinch.current.y * ratio;
+      const clamped = clampOffset(next, x, y);
+      applyView({ zoom: next, x: clamped.x, y: clamped.y });
+    } else if (drag.current && pointers.current.size === 1) {
+      const dx = event.clientX - drag.current.px;
+      const dy = event.clientY - drag.current.py;
+      moved.current = Math.max(moved.current, Math.hypot(dx, dy));
+      const clamped = clamp(drag.current.ox + dx, drag.current.oy + dy);
+      applyView({ ...viewRef.current, x: clamped.x, y: clamped.y });
+    }
+  };
+  const onPointerUp = (event: ReactPointerEvent<HTMLImageElement>) => {
+    pointers.current.delete(event.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size === 0) { drag.current = null; setDragging(false); }
+  };
+  const onImageClick = () => {
+    if (pinched.current) { pinched.current = false; return; }
+    if (moved.current > 6) { moved.current = 0; return; }
+    applyView(viewRef.current.zoom > 1 ? { zoom: 1, x: 0, y: 0 } : { zoom: 2.5, x: 0, y: 0 });
+  };
+
+  return <div className="lightbox" ref={rootRef} data-dragging={dragging} role="dialog" aria-modal="true" aria-label="Image preview" onClick={onClose}>
+    <button type="button" className="lightbox-close" onClick={event => { event.stopPropagation(); onClose(); }} aria-label="Close preview">×</button>
+    {images.length > 1 && <>
+      <button type="button" className="lightbox-nav prev" onClick={event => { event.stopPropagation(); step(-1); }} aria-label="Previous image">‹</button>
+      <button type="button" className="lightbox-nav next" onClick={event => { event.stopPropagation(); step(1); }} aria-label="Next image">›</button>
+    </>}
+    <div className="lightbox-stage" onClick={event => event.stopPropagation()}>
+      <img src={images[current]} alt={`Post attachment ${current + 1} of ${images.length}`} draggable={false}
+        onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
+        onClick={onImageClick} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }} />
+    </div>
+    {images.length > 1 && <div className="lightbox-counter">{current + 1} / {images.length}</div>}
+    <div className="lightbox-hint">{view.zoom > 1 ? 'Drag to pan · pinch or scroll to zoom' : 'Click, pinch or scroll to zoom'}</div>
+  </div>;
+}
+
 function Media({ tweet }: { tweet: Tweet }) {
+  const [preview, setPreview] = useState<{ images: string[]; index: number } | null>(null);
   if (tweet.videoURL) return <video className="media single" controls preload="metadata" poster={tweet.videoPosterURL ?? undefined} src={tweet.videoURL} />;
   if (!tweet.photoURLs.length) return null;
-  return <div className={`media-grid count-${Math.min(tweet.photoURLs.length, 4)}`}>
-    {tweet.photoURLs.slice(0, 4).map((url, index) => <a href={url} target="_blank" rel="noreferrer" key={url}><img src={url} alt={`Post attachment ${index + 1}`} loading="lazy" /></a>)}
-  </div>;
+  const photos = tweet.photoURLs.slice(0, 4);
+  return <>
+    <div className={`media-grid count-${photos.length}`}>
+      {photos.map((url, index) => <button type="button" className="media-thumb" onClick={() => setPreview({ images: photos, index })} key={url}><img src={url} alt={`Post attachment ${index + 1}`} loading="lazy" /></button>)}
+    </div>
+    {preview && <Lightbox images={preview.images} index={preview.index} onClose={() => setPreview(null)} />}
+  </>;
 }
 
 function TweetCard({ tweet, detail = false }: { tweet: Tweet; detail?: boolean }) {
