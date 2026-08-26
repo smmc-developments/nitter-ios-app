@@ -5,7 +5,7 @@ import {
   listAccounts, addAccount, getAccount, removeAccount,
   getFeed, getTimeline, type TweetRow,
 } from './db.js';
-import { parseTimeline } from './parser.js';
+import { mapTweet, type TwvTweetResponse } from './twv.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
 import { createLogger } from './logger.js';
@@ -107,15 +107,15 @@ router.get('/tweet/:username/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid username or tweet ID' });
   }
   try {
-    const html = await fetcher.fetchPage(`/${username}/status/${tweetId}`);
-    const result = parseTimeline(html, username);
-    const mainTweet = result.tweets.find(t => t.id === tweetId);
-    const replies = result.tweets.filter(t => t.id !== tweetId);
-    log(`GET /tweet/${username}/${tweetId} — main: ${mainTweet ? 'found' : 'missing'}, replies: ${replies.length}`);
+    // The twitterwebviewer API exposes a single-tweet endpoint but no reply
+    // thread endpoint, so the detail view returns the tweet itself only.
+    const response = await fetcher.fetchJson(`/api/tweet/${tweetId}`) as TwvTweetResponse;
+    const mainTweet = response.success && response.data ? mapTweet(response.data) : null;
+    log(`GET /tweet/${username}/${tweetId} — main: ${mainTweet ? 'found' : 'missing'}`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({
       tweet: mainTweet ? formatTweet(mainTweet, baseUrl) : null,
-      replies: replies.map(t => formatTweet(t, baseUrl)),
+      replies: [],
     });
   } catch (err: any) {
     const msg = err?.message ?? String(err);

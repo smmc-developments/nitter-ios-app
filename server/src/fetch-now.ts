@@ -8,7 +8,7 @@ async function main() {
   const fetcher = new Fetcher();
   await fetcher.start();
   await fetcher.ensureSession();
-  const imageCache = new ImageCache(fetcher);
+  const imageCache = new ImageCache();
 
   const scheduler = new Scheduler(fetcher, imageCache, 9999);
   await scheduler.run(true);

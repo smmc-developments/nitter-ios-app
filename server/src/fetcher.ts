@@ -1,12 +1,18 @@
-import { chromium, type BrowserContext } from 'playwright';
+import { chromium, type BrowserContext, type Page } from 'playwright';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { createLogger } from './logger.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
-const BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.poast.org';
+// twitterwebviewer.com fronts its JSON API with a Vercel security checkpoint
+// that blocks non-browser TLS fingerprints. API calls therefore run inside a
+// real browser tab (the SPA's own CORS origin), after the tab has cleared any
+// Cloudflare/Vercel challenge on the site.
+const API_URL = process.env.TWV_API_URL || 'https://api.twitterwebviewer.com';
+const SITE_URL = process.env.TWV_SITE_URL || 'https://twitterwebviewer.com';
 const MAX_MEDIA_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const CHALLENGE_TITLE_PATTERNS = ['just a moment', 'verifying', 'checkpoint', 'security check', 'loading'];
 
 const log = createLogger('fetcher');
 
@@ -19,6 +25,8 @@ function findChromePath(): string {
 
   const candidates = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
     '/usr/bin/google-chrome-stable',
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
@@ -65,6 +73,7 @@ export class Fetcher {
   private ready = false;
   private sessionReady = false;
   private sessionPromise: Promise<void> | null = null;
+  private sessionPage: Page | null = null;
   private userAgent = 'Mozilla/5.0';
 
   async start() {
@@ -80,7 +89,7 @@ export class Fetcher {
       '--disable-background-networking',
       '--disable-gpu',
       '--no-sandbox',
-      '--user-data-dir=/tmp/nitter-chrome-profile',
+      '--user-data-dir=/tmp/twv-chrome-profile',
     ];
     log(`Chrome args: ${chromeArgs.join(' ')}`);
 
@@ -103,7 +112,7 @@ export class Fetcher {
     this.chrome.on('exit', (code, signal) => {
       this.ready = false;
       this.sessionReady = false;
-      this.context = null;
+      this.sessionPage = null;
       log.warn(`Chrome process exited: code=${code} signal=${signal}`);
     });
 
@@ -157,6 +166,7 @@ export class Fetcher {
     log('Stopping...');
     this.ready = false;
     this.sessionReady = false;
+    this.sessionPage = null;
     if (this.context) {
       try {
         await this.context.browser()?.close();
@@ -177,44 +187,48 @@ export class Fetcher {
     return this.ready;
   }
 
-  getContext(): BrowserContext | null {
-    return this.context;
-  }
-
   async ensureSession(forceRefresh = false): Promise<void> {
     if (!this.ready || !this.context) throw new Error('Fetcher not started');
     if (forceRefresh) this.sessionReady = false;
     if (this.sessionReady) return;
     if (this.sessionPromise) return this.sessionPromise;
 
-    const promise = this.solveChallenge('/');
+    const promise = this.establishSession();
     this.sessionPromise = promise;
     try {
       await promise;
       this.sessionReady = true;
-      log('Nitter HTTP session ready');
+      log('twitterwebviewer session ready');
     } finally {
       this.sessionPromise = null;
     }
   }
 
-  async fetchPage(path: string): Promise<string> {
+  /// Fetches a JSON API response. `path` is relative to TWV_API_URL
+  /// (e.g. "/api/user/nasa").
+  async fetchJson(path: string): Promise<unknown> {
     if (!this.ready || !this.context) throw new Error('Fetcher not started');
 
     if (this.sessionReady) {
       try {
-        return await this.fetchWithRequest(path);
+        return await this.fetchJsonViaPage(path);
       } catch (err) {
         if (!(err instanceof SessionExpiredError)) throw err;
-        log(`HTTP session expired for ${path}; re-running browser challenge`);
+        log(`API session expired for ${path}; re-establishing browser session`);
         this.sessionReady = false;
       }
     }
 
     await this.ensureSession();
-    return this.fetchWithRequest(path);
+    return this.fetchJsonViaPage(path);
   }
 
+  /// Media hosts (pbs.twimg.com / video.twimg.com) are public CDNs that accept
+  /// plain HTTP clients — no browser session is needed. Redirects are followed
+  /// manually so every hop is re-validated against the same allowlist as the
+  /// initial URL; blindly following redirects would let an allowlisted URL
+  /// bounce the server to arbitrary (e.g. internal or attacker-controlled)
+  /// hosts and stream the response back to clients.
   async fetchMedia(
     url: string,
     headers: Record<string, string>,
@@ -222,48 +236,13 @@ export class Fetcher {
     method: 'GET' | 'HEAD' = 'GET',
     isAllowedRedirect: (url: string) => boolean,
   ): Promise<Response> {
-    if (!this.ready || !this.context) throw new Error('Fetcher not started');
-    await this.ensureSession();
-
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const cookies = await this.context.cookies(BASE_URL);
-      const cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      const response = await this.fetchMediaFollowingRedirects(
-        url, headers, signal, method, cookie, isAllowedRedirect,
-      );
-      if (attempt === 0 && (response.status === 403 || response.status === 503)) {
-        await response.body?.cancel();
-        await this.ensureSession(true);
-        continue;
-      }
-      return response;
-    }
-    throw new Error('Unable to fetch video');
-  }
-
-  // Follows redirects manually so every hop is re-validated against the same
-  // allowlist as the initial URL. Blindly following redirects would let an
-  // allowlisted URL bounce the server to arbitrary (e.g. internal or
-  // attacker-controlled) hosts and stream the response back to clients.
-  private async fetchMediaFollowingRedirects(
-    initialUrl: string,
-    headers: Record<string, string>,
-    signal: AbortSignal,
-    method: 'GET' | 'HEAD',
-    cookie: string,
-    isAllowedRedirect: (url: string) => boolean,
-  ): Promise<Response> {
-    const baseHost = new URL(BASE_URL).host;
-    let currentUrl = initialUrl;
+    let currentUrl = url;
     for (let redirectCount = 0; ; redirectCount++) {
       const requestHeaders: Record<string, string> = {
         ...headers,
         accept: 'video/mp4,video/*;q=0.9,*/*;q=0.5',
         'user-agent': this.userAgent,
       };
-      // Session cookies are only for the Nitter origin — never leak them to
-      // redirect targets on other hosts.
-      if (new URL(currentUrl).host === baseHost) requestHeaders.cookie = cookie;
       const response = await fetch(currentUrl, {
         method,
         headers: requestHeaders,
@@ -285,79 +264,85 @@ export class Fetcher {
     }
   }
 
-  private async fetchWithRequest(path: string): Promise<string> {
-    if (!this.context) throw new Error('Fetcher not started');
-    const url = `${BASE_URL}${path}`;
+  private async fetchJsonViaPage(path: string): Promise<unknown> {
+    if (!this.sessionPage) throw new SessionExpiredError();
+    const url = `${API_URL}${path}`;
     const startTime = Date.now();
-    const response = await this.context.request.fetch(url, {
-      maxRedirects: 0,
-      timeout: 30_000,
-    });
-    const html = await response.text();
-    const lower = html.toLowerCase();
 
-    if (response.status() === 429 || lower.includes('too many requests')) {
+    const result = await this.sessionPage.evaluate(async (target: string) => {
+      try {
+        const response = await fetch(target, { headers: { accept: 'application/json' } });
+        const body = await response.text();
+        return { status: response.status, body };
+      } catch (err) {
+        return { status: 0, body: '', error: String(err) };
+      }
+    }, url).catch(() => ({ status: 0, body: '', error: 'page evaluate failed' }));
+
+    if (result.status === 429) {
       throw new Error(`429 rate limited for ${path}`);
     }
-    if (response.status() === 503 || lower.includes('verifying your browser')) {
-      throw new SessionExpiredError();
+    if (result.status === 0 || result.body.trimStart().startsWith('<')) {
+      // Checkpoint/CDN error page instead of JSON — session must be re-solved.
+      throw new SessionExpiredError(`${result.error ?? 'non-JSON response'} for ${path}`);
     }
-    if (!response.ok()) {
-      throw new Error(`Nitter returned HTTP ${response.status()} for ${path}`);
+    if (result.status !== 200) {
+      throw new Error(`twitterwebviewer API returned HTTP ${result.status} for ${path}`);
     }
-    if (lower.includes('class="error-panel"')) {
-      throw new Error(`Nitter returned an error page for ${path}`);
-    }
-    if (!lower.includes('class="timeline') && !lower.includes('class="profile-card')) {
-      throw new Error(`Nitter returned incomplete HTML for ${path}`);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(result.body);
+    } catch {
+      throw new SessionExpiredError(`Invalid JSON from ${path}`);
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    log(`[${path}] HTTP fast path done in ${elapsed}s — HTML length: ${html.length}`);
-    return html;
+    log(`[${path}] API fetch done in ${elapsed}s — ${result.body.length} bytes`);
+    return parsed;
   }
 
-  private async solveChallenge(path: string): Promise<void> {
+  /// Opens a tab on the site origin and waits until any Cloudflare/Vercel
+  /// challenge has cleared. The tab is kept open — its browser context (TLS
+  /// fingerprint + cookies) authorizes subsequent same-origin CORS fetches
+  /// against the API host.
+  private async establishSession(): Promise<void> {
     if (!this.context) throw new Error('Fetcher not started');
+    await this.sessionPage?.close().catch(() => {});
+    this.sessionPage = null;
 
-    const url = `${BASE_URL}${path}`;
-    log(`Browser challenge bootstrap fetching ${url}`);
+    const url = `${SITE_URL}/`;
+    log(`Browser session bootstrap fetching ${url}`);
     const startTime = Date.now();
 
     const page = await this.context.newPage();
-    log(`Page opened for ${path}`);
     try {
       await page.goto(url, { waitUntil: 'commit', timeout: 30_000 });
-      log(`Initial navigation complete for ${path}`);
 
       for (let i = 0; i < 30; i++) {
         await page.waitForTimeout(2_000);
-        try {
-          const title = await page.title();
-          log(`[${path}] poll ${i + 1}: title = "${title}"`);
+        const title = (await page.title().catch(() => '')) ?? '';
+        log(`[session] poll ${i + 1}: title = "${title}"`);
 
-          // Detect 429 rate limiting — fail immediately so scheduler can backoff.
-          if (title.includes('429') || title.toLowerCase().includes('too many')) {
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            throw new Error(`429 rate limited for ${path} (elapsed: ${elapsed}s)`);
-          }
+        if (title.includes('429') || title.toLowerCase().includes('too many')) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          throw new Error(`429 rate limited for ${url} (elapsed: ${elapsed}s)`);
+        }
 
-          const lowerTitle = title.toLowerCase();
-          if (!lowerTitle.includes('verifying') && !lowerTitle.startsWith('loading ')) {
-            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-            log(`[${path}] Browser challenge solved in ${elapsed}s`);
-            return;
-          }
-        } catch (err: any) {
-          log.debug(`[${path}] Poll ${i + 1} error: ${err?.message}`);
-          throw err;
+        const lowerTitle = title.toLowerCase();
+        if (lowerTitle && !CHALLENGE_TITLE_PATTERNS.some(pattern => lowerTitle.includes(pattern))) {
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          log(`[session] challenge cleared in ${elapsed}s`);
+          this.sessionPage = page;
+          return;
         }
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      throw new Error(`Challenge did not solve for ${path} within 60s (elapsed: ${elapsed}s)`);
-    } finally {
+      throw new Error(`Session did not establish within 60s (elapsed: ${elapsed}s)`);
+    } catch (err) {
       await page.close().catch(() => {});
+      throw err;
     }
   }
 }

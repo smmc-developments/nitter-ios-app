@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { cursorPath, selectAccountsForCycle } from '../src/scheduling.js';
+import { selectAccountsForCycle } from '../src/scheduling.js';
 
 const now = Date.parse('2026-07-21T00:00:00.000Z');
 
@@ -46,12 +46,4 @@ test('dormant accounts use a six-hour interval', () => {
   ], 15 * 60_000, 10, now);
 
   assert.deepEqual(selected.map(a => a.username), ['due']);
-});
-
-test('cursor links stay on the requested account timeline', () => {
-  assert.equal(
-    cursorPath('/alice/with_replies', '?cursor=abc123'),
-    '/alice/with_replies?cursor=abc123',
-  );
-  assert.equal(cursorPath('/alice', 'https://example.com/'), null);
 });

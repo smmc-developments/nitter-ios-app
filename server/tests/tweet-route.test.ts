@@ -7,7 +7,7 @@ import express from 'express';
 import type { Fetcher } from '../src/fetcher.js';
 import type { ImageCache } from '../src/image-cache.js';
 
-const dataDir = mkdtempSync(join(tmpdir(), 'nitter-tweet-route-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'twv-tweet-route-'));
 process.env.DATA_DIR = dataDir;
 
 const { createRouter } = await import('../src/routes.js');
@@ -21,9 +21,17 @@ test.after(() => {
 function setup() {
   const fetchedPaths: string[] = [];
   const fetcher = {
-    fetchPage: async (path: string) => {
+    fetchJson: async (path: string) => {
       fetchedPaths.push(path);
-      return '<html><body></body></html>';
+      return {
+        success: true,
+        data: {
+          id: '1234567890',
+          author: { username: 'nasa', displayName: 'NASA', avatar: null },
+          content: 'Hello',
+          createdAt: '2026-08-25T16:47:24.000Z',
+        },
+      };
     },
   } as unknown as Fetcher;
   const scheduler = { isRunning: false, run: async () => {} };
@@ -44,12 +52,15 @@ async function withServer<T>(app: express.Express, run: (base: string) => Promis
   }
 }
 
-test('tweet route fetches the canonical upstream path for valid params', async () => {
+test('tweet route fetches the API tweet endpoint for valid params', async () => {
   const { app, fetchedPaths } = setup();
   await withServer(app, async base => {
     const response = await fetch(`${base}/api/tweet/NASA/1234567890`);
     assert.equal(response.status, 200);
-    assert.deepEqual(fetchedPaths, ['/nasa/status/1234567890']);
+    assert.deepEqual(fetchedPaths, ['/api/tweet/1234567890']);
+    const body = await response.json() as { tweet: { id: string } | null; replies: unknown[] };
+    assert.equal(body.tweet?.id, '1234567890');
+    assert.deepEqual(body.replies, []);
   });
 });
 

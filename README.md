@@ -1,12 +1,12 @@
 # Nitter Apps
 
-Native iOS and responsive web clients for reading Twitter/X timelines through Nitter, with a companion Node.js server that handles anti-bot bypass, feed aggregation, and media proxying.
+Native iOS and responsive web clients for reading Twitter/X timelines, with a companion Node.js server that handles anti-bot bypass, feed aggregation, and media proxying.
 
 ## How It Works
 
-Twitter/X content is accessed through public Nitter instances (xcancel.com, nitter.poast.org). These instances enforce a JavaScript anti-bot challenge that blocks plain HTTP clients and all headless browsers. The companion server solves this by launching a real system Chrome browser via Chrome DevTools Protocol, then uses Playwright to interact with it.
+Twitter/X content is accessed through the twitterwebviewer.com JSON API (`https://api.twitterwebviewer.com`). Both the site and the API reject non-browser clients (Cloudflare Turnstile on the site, a Vercel security checkpoint on the API), so the companion server launches a real system Chrome browser via Chrome DevTools Protocol, uses Playwright to connect to it, clears any challenge once, and then issues API requests from inside that browser session.
 
-The server fetches timelines, stores tweets in SQLite, and serves a REST API plus the production web app. Both clients use the same accounts, feed, and signed media URLs.
+The server fetches timelines, stores tweets in SQLite, and serves a REST API plus the production web app. Both clients use the same accounts, feed, and signed media URLs. Media (images and video) comes straight from Twitter's public CDN hosts (`pbs.twimg.com`, `video.twimg.com`), which the server proxies and caches with signed URLs.
 
 ## Project Structure
 
@@ -21,7 +21,7 @@ web/          Responsive web app (React, TypeScript, Vite)
 - **Feed** — Merged, deduplicated timeline from all watched accounts with pull-to-refresh
 - **Accounts** — Add/remove Twitter handles, CSV import, automatic background fetching
 - **Settings** — Server URL, API key, System/Light/Dark appearance toggle
-- **Tweet Detail** — Full tweet view with reply chain, parent context, in-app navigation
+- **Tweet Detail** — Full tweet view with in-app navigation
 - **Media** — Photo grid (single full-width, multi two-column), video playback via native AVPlayer
 - **Links** — Clickable URLs detected and rendered inline in tweet text
 
@@ -169,15 +169,14 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `API_KEY` | *(required)* | Bearer token for API authentication |
 | `PROXY_SECRET` | *(required by release Compose)* | Stable HMAC signing key for media URLs |
 | `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
-| `NITTER_BASE_URL` | `https://nitter.poast.org` | Nitter instance used for timelines and media |
+| `TWV_API_URL` | `https://api.twitterwebviewer.com` | twitterwebviewer JSON API origin |
+| `TWV_SITE_URL` | `https://twitterwebviewer.com` | Site origin used to clear browser challenges |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
 | `LOG_LEVEL` | `info` | Server output: `debug`, `info`, `warn`, `error`, or `silent` |
 | `MAX_ACCOUNTS_PER_CYCLE` | `40` | Max accounts fetched per automatic cycle |
 | `FETCH_CONCURRENCY` | `2` | Simultaneous fetch requests |
 | `FETCH_START_INTERVAL_MS` | `1000` | Delay between starting each fetch |
 | `MAX_PAGES_PER_ACCOUNT` | `5` | Pages to follow per account for backfill |
-| `INCLUDE_REPLIES` | `true` | Include replies in timeline |
-| `MAX_PARENT_ENRICHMENTS` | `20` | Parent context fetches per cycle |
 
 The release Compose file also accepts `NITTER_VERSION` (`latest`) and `HOST_PORT` (`3000`) for image selection and host port mapping. Existing `XCANCEL_VERSION` values remain supported during migration, but new deployments should use `NITTER_VERSION`. `PORT`, `DATA_DIR`, `CHROME_PATH`, and `NODE_ENV` are configured inside the image and should not be overridden.
 
@@ -189,7 +188,7 @@ The release Compose file also accepts `NITTER_VERSION` (`latest`) and `HOST_PORT
 | `GET` | `/api/accounts` | Bearer | List all watched accounts |
 | `POST` | `/api/accounts` | Bearer | Add accounts (`{ handles: ["handle1", "handle2"] }`) |
 | `DELETE` | `/api/accounts/:handle` | Bearer | Remove an account |
-| `GET` | `/api/tweets/:id` | Bearer | Tweet detail with replies |
+| `GET` | `/api/tweet/:username/:id` | Bearer | Tweet detail |
 | `POST` | `/api/fetch` | Bearer | Trigger an immediate fetch cycle |
 | `GET` | `/api/status` | — | Server status |
 | `GET` | `/api/proxy` | Signed URL | Proxy images and video |
@@ -205,23 +204,23 @@ Persistent data is stored in a Docker volume at `/app/data/`:
 
 ### Anti-Bot Bypass
 
-All headless browsers (Puppeteer stealth, Playwright, etc.) are detected by BotD fingerprinting. The server launches a real system Chrome with `--remote-debugging-port`, connects via Playwright's `connectOverCDP`, and solves the challenge once at startup. Subsequent requests use the browser's HTTP context directly.
+The twitterwebviewer API is behind a Vercel security checkpoint that blocks non-browser TLS fingerprints, and the site uses Cloudflare Turnstile. The server launches a real system Chrome (or Chromium-based browser) with `--remote-debugging-port`, connects via Playwright's `connectOverCDP`, and opens a tab on the site until any challenge clears. Subsequent API requests run as `fetch()` calls inside that tab, inheriting the browser's fingerprint and cookies.
 
 On macOS, Chrome runs with the native display. On Linux/Docker, `xvfb` provides a virtual display.
 
 ### Feed Scheduling
 
-Accounts are prioritized by activity: new > active (24h) > warm (7d) > dormant (7d+). Each account tracks its own cursor position for pagination. The observation-based retention window keeps tweets for 7 days.
+Accounts are prioritized by activity: new > active (24h) > warm (7d) > dormant (7d+). Each account tracks its own timeline cursor for pagination. The observation-based retention window keeps tweets for 7 days.
 
 ### Retweet Attribution
 
-Nitter multi-user pages only show the retweeter's display name, not their handle. The server resolves this by fetching individual account pages and joining via a `tweet_timelines` table, enabling per-account retweet attribution.
+The API reports the original author and the retweeter separately. The server joins them via a `tweet_timelines` table, enabling per-account retweet attribution.
 
 ### Media Proxy
 
-Nitter's `/pic/` URLs return 503 to plain clients. The server proxies all media through the browser context with signed HMAC URLs (stable for ~24 hours). The iOS app uses `CachedAsyncImage` with request coalescing for efficient loading.
+Media URLs from the API point directly at Twitter's public CDN (`pbs.twimg.com`, `video.twimg.com`), which accepts plain HTTP clients. The server still proxies all media with signed HMAC URLs (stable for ~24 hours) and caches images on disk so clients never hit the CDN directly. The iOS app uses `CachedAsyncImage` with request coalescing for efficient loading.
 
-Video content is proxied with HTTP range support for seeking, and played natively via AVPlayer.
+Video content is proxied with HTTP range support for seeking, and played natively via AVPlayer. For video tweets the server picks a mobile-friendly rendition (≤ ~2.5 Mbps) when the API lists multiple bitrates.
 
 ## CI/CD
 

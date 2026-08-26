@@ -33,7 +33,7 @@ test('video proxy forwards byte ranges and streams partial content', async () =>
   const scheduler = { isRunning: false, run: async () => {} };
   const imageCache = {} as ImageCache;
   const secret = 'test-secret';
-  const upstream = 'https://nitter.poast.org/video/vid.twimg.com%2Fclip.mp4';
+  const upstream = 'https://video.twimg.com/amplify_video/1/vid/avc1/1280x720/clip.mp4?tag=29';
   const expires = String(Math.floor(Date.now() / 1000) + 3_600);
   const sig = createHmac('sha256', secret).update(`${expires}\n${upstream}`).digest('hex');
 
@@ -69,7 +69,7 @@ test('video proxy rejects upstream responses that are not video', async () => {
   const scheduler = { isRunning: false, run: async () => {} };
   const imageCache = {} as ImageCache;
   const secret = 'test-secret';
-  const upstream = 'https://nitter.poast.org/video/vid.twimg.com%2Fclip.mp4';
+  const upstream = 'https://video.twimg.com/amplify_video/1/vid/avc1/1280x720/clip.mp4?tag=29';
 
   const app = express();
   app.use('/api', createRouter(fetcher, scheduler, imageCache, secret));
@@ -98,7 +98,7 @@ test('video proxy allows octet-stream video bodies', async () => {
   const scheduler = { isRunning: false, run: async () => {} };
   const imageCache = {} as ImageCache;
   const secret = 'test-secret';
-  const upstream = 'https://nitter.poast.org/video/vid.twimg.com%2Fclip.mp4';
+  const upstream = 'https://video.twimg.com/amplify_video/1/vid/avc1/1280x720/clip.mp4?tag=29';
 
   const app = express();
   app.use('/api', createRouter(fetcher, scheduler, imageCache, secret));

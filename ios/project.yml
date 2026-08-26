@@ -5,11 +5,6 @@ options:
     iOS: "17.0"
   createIntermediateGroups: true
 
-packages:
-  SwiftSoup:
-    url: https://github.com/scinfu/SwiftSoup
-    from: 2.7.0
-
 targets:
   Nitter:
     type: application
@@ -29,7 +24,6 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     dependencies:
-      - package: SwiftSoup
       - target: NitterShareExtension
     settings:
       base:

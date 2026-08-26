@@ -90,16 +90,16 @@ async function main() {
     );
   }
   const webAuthMiddleware = createWebAuthMiddleware(WEB_USERNAME, WEB_PASSWORD);
-  log('Starting Nitter server...');
+  log('Starting twitterwebviewer server...');
   log(`Config: PORT=${PORT}, FETCH_MINUTES=${FETCH_MINUTES}, LOG_LEVEL=${process.env.LOG_LEVEL || 'info'}, API_KEY=${API_KEY ? '(set)' : '(not set)'}, WEB_AUTH=${WEB_USERNAME ? '(set)' : '(not set)'}`);
 
   const fetcher = new Fetcher();
   await fetcher.start();
   log('Fetcher initialized');
   await fetcher.ensureSession();
-  log('Nitter session initialized');
+  log('twitterwebviewer session initialized');
 
-  const imageCache = new ImageCache(fetcher);
+  const imageCache = new ImageCache();
 
   const scheduler = new Scheduler(fetcher, imageCache, FETCH_MINUTES);
   scheduler.start();

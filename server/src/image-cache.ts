@@ -1,7 +1,6 @@
 import { createHash } from 'crypto';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'fs/promises';
 import path from 'path';
-import type { Fetcher } from './fetcher.js';
 import { DATA_DIR } from './paths.js';
 import { createLogger } from './logger.js';
 
@@ -13,21 +12,23 @@ const MAX_CACHE_BYTES = 512 * 1024 * 1024;
 const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const PREFETCH_CONCURRENCY = 4;
 const MAX_QUEUED_IMAGES = 2_000;
+const FETCH_TIMEOUT_MS = 15_000;
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 export interface CachedImage {
   body: Buffer;
   contentType: string;
 }
 
+// twitterwebviewer API responses reference media directly on Twitter's public
+// CDN hosts, which accept plain HTTP clients — no browser session required.
 export class ImageCache {
-  private fetcher: Fetcher;
   private inFlight = new Map<string, Promise<CachedImage>>();
   private queued = new Set<string>();
   private queue: string[] = [];
   private workers = 0;
 
-  constructor(fetcher: Fetcher) {
-    this.fetcher = fetcher;
+  constructor() {
     void mkdir(CACHE_DIR, { recursive: true }).then(() => this.pruneExpired());
   }
 
@@ -86,22 +87,19 @@ export class ImageCache {
   }
 
   private async fetchAndStore(url: string): Promise<CachedImage> {
-    const context = this.fetcher.getContext();
-    if (!context) throw new Error('Browser not ready');
+    const response = await fetch(url, {
+      headers: { 'user-agent': USER_AGENT, accept: 'image/*' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
-    let response = await context.request.fetch(url, { maxRedirects: 0, timeout: 15_000 });
-    if (response.status() === 503 || response.status() === 403) {
-      await this.fetcher.ensureSession(true);
-      response = await context.request.fetch(url, { maxRedirects: 0, timeout: 15_000 });
-    }
-
-    const contentType = response.headers()['content-type'] || '';
-    const contentLength = Number(response.headers()['content-length'] || 0);
-    if (!response.ok()) throw new Error(`Image host returned ${response.status()}`);
+    const contentType = response.headers.get('content-type') ?? '';
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (!response.ok) throw new Error(`Image host returned ${response.status}`);
     if (!contentType.toLowerCase().startsWith('image/')) throw new Error('Upstream response is not an image');
     if (contentLength > MAX_IMAGE_BYTES) throw new Error('Image is too large');
 
-    const body = await response.body();
+    const body = Buffer.from(await response.arrayBuffer());
     if (body.length > MAX_IMAGE_BYTES) throw new Error('Image is too large');
     const image = { body, contentType };
     await this.write(url, image);
@@ -169,17 +167,12 @@ function cacheKey(url: string): string {
 }
 
 export function isAllowedImageUrl(value: string): boolean {
-  return isAllowedUrl(value, url => isNitterUrl(url)
-    && url.pathname.startsWith('/pic/')
-    && !isMp4Path(url));
+  return isAllowedUrl(value, url => url.hostname === 'pbs.twimg.com' && !isMp4Path(url));
 }
 
 export function isAllowedVideoUrl(value: string): boolean {
   return isAllowedUrl(value, url =>
-    (isNitterUrl(url) && (url.pathname.startsWith('/video/')
-      || (url.pathname.startsWith('/pic/') && isMp4Path(url))))
-    || (url.hostname === 'video.twimg.com' && !url.port && isMp4Path(url))
-  );
+    (url.hostname === 'video.twimg.com' || url.hostname === 'pbs.twimg.com') && isMp4Path(url));
 }
 
 function isAllowedUrl(value: string, acceptsUrl: (url: URL) => boolean): boolean {
@@ -188,15 +181,11 @@ function isAllowedUrl(value: string, acceptsUrl: (url: URL) => boolean): boolean
     return url.protocol === 'https:'
       && !url.username
       && !url.password
+      && !url.port
       && acceptsUrl(url);
   } catch {
     return false;
   }
-}
-
-function isNitterUrl(url: URL): boolean {
-  const base = new URL(process.env.NITTER_BASE_URL || 'https://nitter.poast.org');
-  return url.hostname === base.hostname && url.port === base.port;
 }
 
 function isMp4Path(url: URL): boolean {

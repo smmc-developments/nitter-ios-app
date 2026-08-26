@@ -17,8 +17,6 @@ services:
       FETCH_CONCURRENCY: ${FETCH_CONCURRENCY:-2}
       FETCH_START_INTERVAL_MS: ${FETCH_START_INTERVAL_MS:-1000}
       MAX_PAGES_PER_ACCOUNT: ${MAX_PAGES_PER_ACCOUNT:-5}
-      INCLUDE_REPLIES: ${INCLUDE_REPLIES:-true}
-      MAX_PARENT_ENRICHMENTS: ${MAX_PARENT_ENRICHMENTS:-20}
     volumes:
       - nitter-data:/app/data
     restart: unless-stopped

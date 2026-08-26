@@ -1,12 +1,14 @@
 import { Fetcher } from './fetcher.js';
-import { parseParentTweet, parseTimeline } from './parser.js';
+import {
+  mapTimeline, mapTweet, mapUser,
+  type TwvTimelineResponse, type TwvUserResponse,
+} from './twv.js';
 import {
   listAccounts, updateAccountFetch,
   upsertTweet, pruneOldTweets, updateAccountBackfill,
   hasTimelineTweet, type AccountRow,
-  needsParentEnrichment, storeParentTweet,
 } from './db.js';
-import { cursorPath, selectAccountsForCycle } from './scheduling.js';
+import { selectAccountsForCycle } from './scheduling.js';
 import type { ImageCache } from './image-cache.js';
 import { createLogger } from './logger.js';
 
@@ -14,8 +16,6 @@ const CONCURRENCY = parsePositiveInt(process.env.FETCH_CONCURRENCY, 2);
 const REQUEST_START_INTERVAL_MS = parsePositiveInt(process.env.FETCH_START_INTERVAL_MS, 1_000);
 const MAX_ACCOUNTS_PER_CYCLE = parsePositiveInt(process.env.MAX_ACCOUNTS_PER_CYCLE, 40);
 const MAX_PAGES_PER_ACCOUNT = parsePositiveInt(process.env.MAX_PAGES_PER_ACCOUNT, 5);
-const INCLUDE_REPLIES = process.env.INCLUDE_REPLIES !== 'false';
-const MAX_PARENT_ENRICHMENTS = parsePositiveInt(process.env.MAX_PARENT_ENRICHMENTS, 20);
 
 const log = createLogger('scheduler');
 
@@ -75,23 +75,32 @@ export class Scheduler {
       return;
     }
 
-    const parentBudget = { remaining: MAX_PARENT_ENRICHMENTS };
     const results = await this.runWorkers(accounts, async (account, index) => {
-      const basePath = '/' + account.username + (INCLUDE_REPLIES ? '/with_replies' : '');
       log(`Account ${index + 1}/${accounts.length}: @${account.username}`);
       try {
-        let path = basePath;
         let parsed = 0;
         let page = 0;
-        let profile: ReturnType<typeof parseTimeline>['account'] = null;
         let backfillComplete = account.backfill_complete === 1;
-        const seenPaths = new Set<string>();
 
-        while (path && page < MAX_PAGES_PER_ACCOUNT && !seenPaths.has(path)) {
-          seenPaths.add(path);
-          const html = await this.fetchPageWithRetry(path, account.username);
-          const result = parseTimeline(html, account.username);
-          if (page === 0) profile = result.account;
+        // Profile first — the timeline endpoint needs the numeric user id.
+        const userResponse = await this.fetchJsonWithRetry(
+          `/api/user/${account.username}`, account.username,
+        ) as TwvUserResponse;
+        if (!userResponse.success || !userResponse.data) {
+          throw new Error(userResponse.error || `@${account.username} not found`);
+        }
+        const profile = mapUser(userResponse.data);
+        const uid = userResponse.data.id;
+
+        let cursor = backfillComplete ? null : account.backfill_cursor;
+        const seenCursors = new Set<string>();
+        while (page < MAX_PAGES_PER_ACCOUNT && (page === 0 || cursor)) {
+          if (cursor && seenCursors.has(cursor)) break;
+          if (cursor) seenCursors.add(cursor);
+          const path = `/api/tweets/${account.username}?uid=${encodeURIComponent(uid)}`
+            + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : '');
+          const response = await this.fetchJsonWithRetry(path, account.username) as TwvTimelineResponse;
+          const result = mapTimeline(response, account.username);
           const knownBeforeFetch = result.tweets.some(tweet => hasTimelineTweet(account.username, tweet.id));
 
           for (const tweet of result.tweets) {
@@ -99,36 +108,32 @@ export class Scheduler {
             upsertTweet(tweet);
             parsed++;
           }
-          this.imageCache.prefetch(mediaUrls(result));
-          for (const tweet of result.tweets) {
-            if (!tweet.reply_to_handles?.length || parentBudget.remaining <= 0) continue;
-            if (!needsParentEnrichment(tweet.id)) continue;
-            parentBudget.remaining--;
-            await this.enrichParent(tweet.id, tweet.status_url, account.username);
-          }
+          this.imageCache.prefetch(mediaUrls(result.tweets, profile.avatarUrl));
 
           page++;
-          const pageCursor = cursorPath(basePath, result.nextCursor);
-          if (backfillComplete && knownBeforeFetch) {
-            path = '';
-          } else if (page === 1 && !backfillComplete && account.backfill_cursor) {
-            path = cursorPath(basePath, account.backfill_cursor) ?? pageCursor ?? '';
+
+          // After the fresh first page, resume backfill from the stored
+          // cursor instead of re-walking already-seen pages.
+          if (page === 1 && !backfillComplete && account.backfill_cursor) {
+            cursor = account.backfill_cursor;
           } else {
-            path = pageCursor ?? '';
+            cursor = result.nextCursor;
           }
 
-          if (!path) {
+          if (!cursor) {
             backfillComplete = true;
             updateAccountBackfill(account.username, null, true);
+          } else if (backfillComplete && knownBeforeFetch) {
+            cursor = null;
           } else if (page === MAX_PAGES_PER_ACCOUNT) {
             backfillComplete = false;
-            updateAccountBackfill(account.username, result.nextCursor, false);
+            updateAccountBackfill(account.username, cursor, false);
           }
         }
 
         updateAccountFetch(account.username, {
-          displayName: profile?.name,
-          avatarUrl: profile?.avatarUrl ?? undefined,
+          displayName: profile.name,
+          avatarUrl: profile.avatarUrl ?? undefined,
         });
         log(`@${account.username}: ${parsed} tweet(s) across ${page} page(s)`);
         return { parsed, inserted: parsed };
@@ -151,11 +156,11 @@ export class Scheduler {
     }
   }
 
-  private async fetchPageWithRetry(path: string, username: string): Promise<string> {
+  private async fetchJsonWithRetry(path: string, username: string): Promise<unknown> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await this.waitForStartSlot();
       try {
-        return await this.fetcher.fetchPage(path);
+        return await this.fetcher.fetchJson(path);
       } catch (err: any) {
         const msg = err?.message ?? String(err);
         const rateLimited = msg.includes('429') || msg.toLowerCase().includes('rate');
@@ -165,25 +170,7 @@ export class Scheduler {
         log(`@${username} rate limited; retry ${attempt}/3 in ${delay / 1000}s`);
       }
     }
-    throw new Error(`@${username} returned no HTML`);
-  }
-
-  private async enrichParent(replyId: string, statusUrl: string | null, username: string) {
-    if (!statusUrl) {
-      storeParentTweet(replyId, null, 'unavailable');
-      return;
-    }
-    try {
-      const path = new URL(statusUrl).pathname;
-      const html = await this.fetchPageWithRetry(path, username);
-      const parent = parseParentTweet(html);
-      storeParentTweet(replyId, parent, parent ? 'found' : 'unavailable');
-      if (parent?.avatarUrl) this.imageCache.prefetch([parent.avatarUrl]);
-      log(`@${username}: parent context ${parent ? 'found' : 'unavailable'} for ${replyId}`);
-    } catch (err) {
-      storeParentTweet(replyId, null, 'failed');
-      log.warn(`@${username}: parent context failed for ${replyId}: ${String(err)}`);
-    }
+    throw new Error(`@${username} returned no data`);
   }
 
   private async waitForStartSlot() {
@@ -220,9 +207,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function mediaUrls(result: ReturnType<typeof parseTimeline>): Array<string | null> {
-  const urls: Array<string | null> = [result.account?.avatarUrl ?? null];
-  for (const tweet of result.tweets) {
+type MappedTweet = ReturnType<typeof mapTweet>;
+
+function mediaUrls(tweets: MappedTweet[], avatarUrl: string | null): Array<string | null> {
+  const urls: Array<string | null> = [avatarUrl];
+  for (const tweet of tweets) {
     urls.push(tweet.avatar_url, tweet.video_poster_url);
     if (tweet.photo_urls) {
       try {

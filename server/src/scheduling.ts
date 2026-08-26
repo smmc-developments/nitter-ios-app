@@ -35,8 +35,3 @@ function parseSqlDate(value: string | null): number | null {
   const timestamp = Date.parse(normalized);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
-
-export function cursorPath(basePath: string, cursor: string | null): string | null {
-  if (!cursor || !cursor.startsWith('?cursor=')) return null;
-  return basePath + cursor;
-}
