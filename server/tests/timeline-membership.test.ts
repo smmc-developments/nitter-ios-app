@@ -59,13 +59,21 @@ test('one tweet retains independent membership in multiple timelines', () => {
   assert.equal(database.getTimeline('bob', 20).length, 1, 'deleting one owner preserves shared content');
 });
 
-test('failed attempts do not postpone the next scheduled fetch', () => {
+test('failed attempts record the attempt and count toward backoff, success resets it', () => {
   database.addAccount('charlie');
   database.updateAccountFetch('charlie', { error: 'temporary failure' });
-  assert.equal(database.getAccount('charlie')?.last_fetched_at, null);
+  const failed = database.getAccount('charlie');
+  assert.notEqual(failed?.last_fetched_at, null);
+  assert.equal(failed?.consecutive_failures, 1);
+  assert.equal(failed?.fetch_error, 'temporary failure');
 
-  database.updateAccountFetch('charlie', {});
-  assert.notEqual(database.getAccount('charlie')?.last_fetched_at, null);
+  database.updateAccountFetch('charlie', { error: 'still failing' });
+  assert.equal(database.getAccount('charlie')?.consecutive_failures, 2);
+
+  database.updateAccountFetch('charlie', { displayName: 'Charlie' });
+  const recovered = database.getAccount('charlie');
+  assert.equal(recovered?.consecutive_failures, 0);
+  assert.equal(recovered?.fetch_error, null);
 });
 
 test('newly observed reposts survive retention even when original post is old', () => {

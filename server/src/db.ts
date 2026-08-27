@@ -108,6 +108,9 @@ if (!accountColumns.has('backfill_cursor')) {
 if (!accountColumns.has('backfill_complete')) {
   db.exec('ALTER TABLE accounts ADD COLUMN backfill_complete INTEGER NOT NULL DEFAULT 0');
 }
+if (!accountColumns.has('consecutive_failures')) {
+  db.exec('ALTER TABLE accounts ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0');
+}
 
 const tweetColumns = new Set(
   (db.prepare('PRAGMA table_info(tweets)').all() as Array<{ name: string }>).map(column => column.name),
@@ -156,6 +159,7 @@ export interface AccountRow {
   last_tweet_at: string | null;
   backfill_cursor: string | null;
   backfill_complete: number;
+  consecutive_failures: number;
 }
 
 export function listAccounts(): AccountRow[] {
@@ -212,17 +216,21 @@ export function getAccount(username: string): AccountRow | undefined {
 
 export function updateAccountFetch(username: string, info: { displayName?: string; avatarUrl?: string; error?: string }) {
   log(`updateAccountFetch(@${username}) — name: ${info.displayName ?? '-'}, avatar: ${info.avatarUrl ? 'yes' : '-'}, error: ${info.error ?? '-'}`);
+  // last_fetched_at tracks the last attempt (success or failure) so failing
+  // accounts do not stay "due" forever; consecutive_failures drives the
+  // retry backoff in selectAccountsForCycle.
   db.prepare(`
     UPDATE accounts
-    SET last_fetched_at = CASE WHEN ? IS NULL THEN datetime('now') ELSE last_fetched_at END,
+    SET last_fetched_at = datetime('now'),
         display_name = COALESCE(?, display_name),
         avatar_url = COALESCE(?, avatar_url),
-        fetch_error = ?
+        fetch_error = ?,
+        consecutive_failures = CASE WHEN ? IS NULL THEN 0 ELSE consecutive_failures + 1 END
     WHERE username = ?
   `).run(
-    info.error ?? null,
     info.displayName ?? null,
     info.avatarUrl ?? null,
+    info.error ?? null,
     info.error ?? null,
     username,
   );

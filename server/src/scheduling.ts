@@ -1,6 +1,7 @@
 export interface SchedulableAccount {
   last_fetched_at: string | null;
   last_tweet_at: string | null;
+  consecutive_failures?: number;
 }
 
 export function selectAccountsForCycle<T extends SchedulableAccount>(
@@ -19,7 +20,11 @@ export function selectAccountsForCycle<T extends SchedulableAccount>(
         : tweetAge < 7 * 24 * 60 * 60_000
           ? Math.max(baseIntervalMs, 60 * 60_000)
           : Math.max(baseIntervalMs, 6 * 60 * 60_000);
-      const due = lastFetch === null || now - lastFetch >= interval;
+      // Accounts failing upstream (deleted, suspended, API errors) back off
+      // exponentially-ish so a handful of dead handles cannot dominate every
+      // cycle or spam the logs.
+      const failureBackoffMs = failureBackoff(account.consecutive_failures ?? 0);
+      const due = lastFetch === null || now - lastFetch >= Math.max(interval, failureBackoffMs);
       const priority = lastFetch === null ? 0 : tweetAge < 24 * 60 * 60_000 ? 1 : tweetAge < 7 * 24 * 60 * 60_000 ? 2 : 3;
       return { account, due, priority, lastFetch: lastFetch ?? 0 };
     })
@@ -27,6 +32,13 @@ export function selectAccountsForCycle<T extends SchedulableAccount>(
     .sort((a, b) => a.priority - b.priority || a.lastFetch - b.lastFetch)
     .slice(0, limit)
     .map(item => item.account);
+}
+
+function failureBackoff(consecutiveFailures: number): number {
+  if (consecutiveFailures <= 1) return 0;
+  if (consecutiveFailures <= 3) return 60 * 60_000;          // 1 hour
+  if (consecutiveFailures <= 8) return 6 * 60 * 60_000;      // 6 hours
+  return 24 * 60 * 60_000;                                    // 1 day
 }
 
 function parseSqlDate(value: string | null): number | null {
