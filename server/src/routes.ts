@@ -207,17 +207,17 @@ function formatTweet(row: TweetRow, baseUrl?: string) {
   const proxyArr = baseUrl ? (urls: string[]) => urls.map(u => proxyUrl(baseUrl, u, proxySecret)) : (urls: string[]) => urls;
   return {
     id: row.id,
-    authorName: row.author_name,
-    authorHandle: row.author_handle,
+    authorName: row.author_name ?? '',
+    authorHandle: row.author_handle ?? '',
     avatarURL: proxy(row.avatar_url),
     date: row.date,
-    text: row.text_content,
+    text: row.text_content ?? '',
     statusURL: row.status_url,
-    replyCount: row.reply_count,
-    retweetCount: row.retweet_count,
-    likeCount: row.like_count,
-    viewCount: row.view_count,
-    photoURLs: proxyArr(row.photo_urls ? JSON.parse(row.photo_urls) : []),
+    replyCount: row.reply_count ?? 0,
+    retweetCount: row.retweet_count ?? 0,
+    likeCount: row.like_count ?? 0,
+    viewCount: row.view_count ?? 0,
+    photoURLs: proxyArr(parsePhotoUrls(row.photo_urls)),
     videoPosterURL: proxy(row.video_poster_url),
     videoURL: proxy(row.video_url),
     retweetedBy: row.retweeted_by,
@@ -234,6 +234,16 @@ function formatTweet(row: TweetRow, baseUrl?: string) {
       text: row.parent_text ?? '',
     } : null,
   };
+}
+
+function parsePhotoUrls(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter(url => typeof url === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 return router;

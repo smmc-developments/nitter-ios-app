@@ -87,6 +87,62 @@ test('tweet route fetches the tweet and its replies for valid params', async () 
   });
 });
 
+test('timeline route emits decodable defaults for malformed legacy rows', async () => {
+  database.addAccount('legacy');
+  database.upsertTweet({
+    id: '1234567892',
+    account_username: 'legacy',
+    author_name: null,
+    author_handle: null,
+    avatar_url: null,
+    date: null,
+    text_content: null,
+    status_url: null,
+    reply_count: 0,
+    retweet_count: 0,
+    like_count: 0,
+    view_count: 0,
+    photo_urls: null,
+    video_poster_url: null,
+    video_url: null,
+    retweeted_by: null,
+    is_pinned: 0,
+    quoted_text: null,
+    quoted_handle: null,
+  });
+  database.default.prepare(`
+    UPDATE tweets SET photo_urls = 'not-json', reply_count = NULL WHERE id = ?
+  `).run('1234567892');
+
+  const { app } = setup();
+  await withServer(app, async base => {
+    const response = await fetch(`${base}/api/timeline/legacy`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as { tweets: Array<Record<string, unknown>> };
+    assert.deepEqual(body.tweets, [{
+      id: '1234567892',
+      authorName: '',
+      authorHandle: '',
+      avatarURL: null,
+      date: null,
+      text: '',
+      statusURL: null,
+      replyCount: 0,
+      retweetCount: 0,
+      likeCount: 0,
+      viewCount: 0,
+      photoURLs: [],
+      videoPosterURL: null,
+      videoURL: null,
+      retweetedBy: null,
+      isPinned: false,
+      quotedText: null,
+      quotedHandle: null,
+      parent: null,
+    }]);
+  });
+});
+
 test('tweet route rejects encoded traversal in username', async () => {
   const { app, fetchedPaths } = setup();
   await withServer(app, async base => {
