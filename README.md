@@ -21,7 +21,7 @@ web/          Responsive web app (React, TypeScript, Vite)
 - **Feed** — Merged, deduplicated timeline from all watched accounts with pull-to-refresh
 - **Accounts** — Add/remove Twitter handles, CSV import, automatic background fetching
 - **Settings** — Server URL, API key, System/Light/Dark appearance toggle
-- **Tweet Detail** — Full tweet view with in-app navigation
+- **Tweet Detail** — Full tweet view with the first page of replies and in-app navigation
 - **Media** — Photo grid (single full-width, multi two-column), video playback via native AVPlayer
 - **Links** — Clickable URLs detected and rendered inline in tweet text
 

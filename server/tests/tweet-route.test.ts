@@ -23,6 +23,21 @@ function setup() {
   const fetcher = {
     fetchJson: async (path: string) => {
       fetchedPaths.push(path);
+      if (path.endsWith('/replies')) {
+        return {
+          success: true,
+          data: {
+            replies: [{
+              id: '1234567891',
+              author: { username: 'replyuser', displayName: 'Reply User', avatar: null },
+              content: 'Reply',
+              createdAt: '2026-08-25T16:48:24.000Z',
+            }],
+            nextCursor: null,
+            hasNextPage: false,
+          },
+        };
+      }
       return {
         success: true,
         data: {
@@ -52,15 +67,23 @@ async function withServer<T>(app: express.Express, run: (base: string) => Promis
   }
 }
 
-test('tweet route fetches the API tweet endpoint for valid params', async () => {
+test('tweet route fetches the tweet and its replies for valid params', async () => {
   const { app, fetchedPaths } = setup();
   await withServer(app, async base => {
     const response = await fetch(`${base}/api/tweet/NASA/1234567890`);
     assert.equal(response.status, 200);
-    assert.deepEqual(fetchedPaths, ['/api/tweet/1234567890']);
-    const body = await response.json() as { tweet: { id: string } | null; replies: unknown[] };
+    assert.deepEqual(fetchedPaths, [
+      '/api/tweet/1234567890',
+      '/api/tweet/1234567890/replies',
+    ]);
+    const body = await response.json() as {
+      tweet: { id: string } | null;
+      replies: Array<{ id: string; authorHandle: string }>;
+    };
     assert.equal(body.tweet?.id, '1234567890');
-    assert.deepEqual(body.replies, []);
+    assert.equal(body.replies.length, 1);
+    assert.equal(body.replies[0].id, '1234567891');
+    assert.equal(body.replies[0].authorHandle, 'replyuser');
   });
 });
 

@@ -4,10 +4,11 @@ import { createLogger } from './logger.js';
 
 // Mapper for the twitterwebviewer.com JSON API (https://api.twitterwebviewer.com).
 // Endpoint map:
-//   GET /api/user/{username}                  — profile (id, displayName, avatar, ...)
-//   GET /api/tweets/{username}?uid={id}       — timeline page (~20 tweets + pinned)
-//       &cursor={nextCursor}                  — pagination
-//   GET /api/tweet/{id}                       — single tweet
+//   GET /api/user/{username}                  - profile (id, displayName, avatar, ...)
+//   GET /api/tweets/{username}?uid={id}       - timeline page (~20 tweets + pinned)
+//       &cursor={nextCursor}                  - pagination
+//   GET /api/tweet/{id}                       - single tweet
+//   GET /api/tweet/{id}/replies               - reply page
 // Media URLs point directly at pbs.twimg.com / video.twimg.com.
 
 const log = createLogger('twv', 'debug');
@@ -92,6 +93,16 @@ export interface TwvTweetResponse {
   error?: string;
 }
 
+export interface TwvRepliesResponse {
+  success: boolean;
+  data?: {
+    replies?: TwvTweet[];
+    nextCursor?: string | null;
+    hasNextPage?: boolean;
+  };
+  error?: string;
+}
+
 export interface TwvAccount {
   handle: string;
   name: string;
@@ -125,7 +136,7 @@ export function mapTimeline(
   };
 }
 
-// Bitrate ceiling for the "default" video variant. The API lists every Rendition
+// Bitrate ceiling for the default video variant. The API lists every rendition
 // up to 4K/25Mbps; mobile playback should prefer something closer to 720p.
 const PREFERRED_MAX_BITRATE = 2_500_000;
 
