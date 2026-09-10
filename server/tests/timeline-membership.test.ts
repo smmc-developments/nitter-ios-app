@@ -22,7 +22,7 @@ function tweet(account: string, retweetedBy: string) {
     avatar_url: null,
     date: '2026-07-20T20:33:00.000Z',
     text_content: 'Shared post',
-    status_url: 'https://nitter.poast.org/original/status/1234567890',
+    status_url: 'https://nitter.click/original/status/1234567890',
     reply_count: 0,
     retweet_count: 1,
     like_count: 2,
@@ -90,13 +90,13 @@ test('stores parent context with a reply for feed delivery', () => {
     ...tweet('erin', ''),
     id: '222',
     retweeted_by: null,
-    video_url: 'https://nitter.poast.org/video/vid.twimg.com%2Fclip.mp4',
+    video_url: 'https://nitter.click/video/vid.twimg.com%2Fclip.mp4',
   };
   database.upsertTweet(reply);
   assert.equal(database.needsParentEnrichment('222'), true);
   database.storeParentTweet('222', {
     id: '111',
-    statusUrl: 'https://nitter.poast.org/parent/status/111',
+    statusUrl: 'https://nitter.click/parent/status/111',
     authorName: 'Parent Author',
     authorHandle: 'parent',
     avatarUrl: null,

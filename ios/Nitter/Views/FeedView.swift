@@ -4,12 +4,12 @@ struct FeedView: View {
     @State private var viewModel = FeedViewModel()
     @State private var selectedTweet: Tweet?
     @State private var showFetchSent = false
-    @State private var accounts: [APIClient.ServerAccount] = []
+    @State private var usernames: [String] = []
 
     var body: some View {
         NavigationStack {
             Group {
-                if accounts.isEmpty && !viewModel.isLoading {
+                if usernames.isEmpty && !viewModel.isLoading {
                     ContentUnavailableView(
                         "No Accounts",
                         systemImage: "person.2.badge.plus",
@@ -98,11 +98,12 @@ struct FeedView: View {
 
     private func load(force: Bool = false) async {
         do {
-            accounts = try await APIClient.shared.listAccounts(forceRefresh: force)
+            usernames = try await APIClient.shared.listAccounts(forceRefresh: force).map(\.username)
         } catch {
-            accounts = []
+            if usernames.isEmpty {
+                usernames = await APIClient.shared.lastKnownAccountUsernames()
+            }
         }
-        let usernames = accounts.map(\.username)
         await viewModel.load(usernames: usernames, force: force)
     }
 }

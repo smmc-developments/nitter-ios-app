@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectAccountsForCycle } from '../src/scheduling.js';
+import { cursorPath, hasTimelineOverlap, selectAccountsForCycle } from '../src/scheduling.js';
 
 const now = Date.parse('2026-07-21T00:00:00.000Z');
 
@@ -82,4 +82,29 @@ test('repeated failures back off to hourly, then six-hourly, then daily', () => 
     [account('five-old', '2026-07-20 17:00:00', '2026-07-20T16:00:00.000Z', 5)],
     15 * 60_000, 10, now,
   ).map(a => a.username), ['five-old']);
+});
+
+test('cursor links stay on the requested account timeline', () => {
+  assert.equal(
+    cursorPath('/alice/with_replies', '?cursor=abc123'),
+    '/alice/with_replies?cursor=abc123',
+  );
+  assert.equal(
+    cursorPath('/alice/with_replies', '/Alice/with_replies?cursor=abc123'),
+    '/alice/with_replies?cursor=abc123',
+  );
+  assert.equal(cursorPath('/alice', '/bob?cursor=abc123'), null);
+  assert.equal(cursorPath('/alice', 'https://example.com/'), null);
+});
+
+test('known pinned tweets do not count as pagination overlap', () => {
+  const knownIds = new Set(['pinned', 'regular']);
+  assert.equal(hasTimelineOverlap([
+    { id: 'pinned', is_pinned: 1 },
+    { id: 'new', is_pinned: 0 },
+  ], id => knownIds.has(id)), false);
+  assert.equal(hasTimelineOverlap([
+    { id: 'pinned', is_pinned: 1 },
+    { id: 'regular', is_pinned: 0 },
+  ], id => knownIds.has(id)), true);
 });

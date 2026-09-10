@@ -40,7 +40,7 @@ final class FeedViewModel {
 
         for username in usernames {
             do {
-                let timeline = try await repository.fetch(for: username)
+                let timeline = try await repository.fetchDirect(for: username)
                 allTimelines.append(timeline)
             } catch {
                 if let cached = await repository.cached(for: username) {

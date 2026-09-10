@@ -21,7 +21,7 @@ test.after(() => {
 test('uses the forwarded HTTPS origin for signed media URLs', async () => {
   database.addAccount('alice');
   database.updateAccountFetch('alice', {
-    avatarUrl: 'https://pbs.twimg.com/profile_images/1/alice.jpg',
+    avatarUrl: 'https://nitter.click/pic/pbs.twimg.com%2Fprofile_images%2Falice.jpg',
   });
 
   const app = express();

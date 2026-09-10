@@ -47,3 +47,26 @@ function parseSqlDate(value: string | null): number | null {
   const timestamp = Date.parse(normalized);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
+
+export function cursorPath(basePath: string, cursor: string | null): string | null {
+  if (!cursor) return null;
+  try {
+    const origin = 'https://nitter.invalid';
+    const parsed = new URL(cursor, origin + basePath);
+    if (parsed.origin !== origin
+      || parsed.pathname.toLowerCase() !== basePath.toLowerCase()
+      || !parsed.searchParams.has('cursor')) {
+      return null;
+    }
+    return basePath + parsed.search;
+  } catch {
+    return null;
+  }
+}
+
+export function hasTimelineOverlap<T extends { id: string; is_pinned: number }>(
+  tweets: T[],
+  isKnown: (id: string) => boolean,
+): boolean {
+  return tweets.some(tweet => tweet.is_pinned !== 1 && isKnown(tweet.id));
+}

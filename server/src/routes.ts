@@ -5,7 +5,7 @@ import {
   listAccounts, addAccount, getAccount, removeAccount,
   getFeed, getTimeline, type TweetRow,
 } from './db.js';
-import { mapTweet, type TwvTweetResponse, type TwvRepliesResponse } from './twv.js';
+import { parseConversation } from './parser.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
 import { createLogger } from './logger.js';
@@ -107,18 +107,8 @@ router.get('/tweet/:username/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid username or tweet ID' });
   }
   try {
-    const [tweetResponse, repliesResponse] = await Promise.all([
-      fetcher.fetchJson(`/api/tweet/${tweetId}`),
-      fetcher.fetchJson(`/api/tweet/${tweetId}/replies`).catch(err => {
-        // Reply lookup is best-effort — the main tweet is still useful alone.
-        log.warn(`GET /tweet/${username}/${tweetId} — replies fetch failed: ${err?.message ?? err}`);
-        return null;
-      }),
-    ]) as [TwvTweetResponse, TwvRepliesResponse | null];
-    const mainTweet = tweetResponse.success && tweetResponse.data ? mapTweet(tweetResponse.data) : null;
-    const replies = repliesResponse?.success && Array.isArray(repliesResponse.data?.replies)
-      ? repliesResponse.data.replies.map(reply => mapTweet(reply))
-      : [];
+    const html = await fetcher.fetchPage(`/${username}/status/${tweetId}`);
+    const { tweet: mainTweet, replies } = parseConversation(html, username, tweetId);
     log(`GET /tweet/${username}/${tweetId} — main: ${mainTweet ? 'found' : 'missing'}, replies: ${replies.length}`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({

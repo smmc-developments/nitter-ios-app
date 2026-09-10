@@ -1,7 +1,8 @@
 import Foundation
 
-/// Coordinates the server API and `TimelineCache` with a stale-while-revalidate
-/// policy: serve cached data instantly, then refresh from the server API.
+/// Coordinates the server API, `NitterClient`, and `TimelineCache` with a
+/// stale-while-revalidate policy: serve cached data instantly, then try the
+/// server API first, falling back to direct Nitter access if offline.
 struct TimelineRepository: Sendable {
 
     struct Cached: Sendable {
@@ -13,13 +14,16 @@ struct TimelineRepository: Sendable {
     static let shared = TimelineRepository()
 
     private let server: APIClient
+    private let client: NitterClient
     private let cache: TimelineCache
 
     init(
         server: APIClient = .shared,
+        client: NitterClient = .shared,
         cache: TimelineCache = .shared
     ) {
         self.server = server
+        self.client = client
         self.cache = cache
     }
 
@@ -30,11 +34,33 @@ struct TimelineRepository: Sendable {
         return Cached(timeline: entry.timeline, fetchedAt: entry.fetchedAt, isFresh: fresh)
     }
 
-    /// Fetches the latest timeline from the server API, refreshing the cache.
+    /// Fetches the latest timeline, preferring the server API and falling
+    /// back to direct Nitter access if the server is offline.
     @discardableResult
     func fetch(for username: String) async throws -> Timeline {
-        let tweets = try await server.fetchTimeline(for: username)
-        let timeline = Timeline(tweets: tweets, account: nil)
+        // Try the server first.
+        if await server.isServerOnline() {
+            do {
+                let tweets = try await server.fetchTimeline(for: username)
+                let timeline = Timeline(tweets: tweets, account: nil)
+                await cache.store(timeline, for: username)
+                return timeline
+            } catch {
+                // Server fetch failed — fall through to direct.
+            }
+        }
+
+        // Fallback: direct Nitter access.
+        let timeline = try await client.timeline(for: username)
+        await cache.store(timeline, for: username)
+        return timeline
+    }
+
+    /// Fetches directly from Nitter, skipping the server probe. Used after the
+    /// caller has already established that the server is unavailable.
+    @discardableResult
+    func fetchDirect(for username: String) async throws -> Timeline {
+        let timeline = try await client.timeline(for: username)
         await cache.store(timeline, for: username)
         return timeline
     }

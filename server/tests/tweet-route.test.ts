@@ -7,7 +7,7 @@ import express from 'express';
 import type { Fetcher } from '../src/fetcher.js';
 import type { ImageCache } from '../src/image-cache.js';
 
-const dataDir = mkdtempSync(join(tmpdir(), 'twv-tweet-route-'));
+const dataDir = mkdtempSync(join(tmpdir(), 'nitter-tweet-route-'));
 process.env.DATA_DIR = dataDir;
 
 const { createRouter } = await import('../src/routes.js');
@@ -21,32 +21,44 @@ test.after(() => {
 function setup() {
   const fetchedPaths: string[] = [];
   const fetcher = {
-    fetchJson: async (path: string) => {
+    fetchPage: async (path: string) => {
       fetchedPaths.push(path);
-      if (path.endsWith('/replies')) {
-        return {
-          success: true,
-          data: {
-            replies: [{
-              id: '1234567891',
-              author: { username: 'replyuser', displayName: 'Reply User', avatar: null },
-              content: 'Reply',
-              createdAt: '2026-08-25T16:48:24.000Z',
-            }],
-            nextCursor: null,
-            hasNextPage: false,
-          },
-        };
-      }
-      return {
-        success: true,
-        data: {
-          id: '1234567890',
-          author: { username: 'nasa', displayName: 'NASA', avatar: null },
-          content: 'Hello',
-          createdAt: '2026-08-25T16:47:24.000Z',
-        },
-      };
+      return `
+        <div class="conversation">
+          <div class="before-tweet">
+            <div class="timeline-item" data-username="parentuser">
+              <a class="tweet-link" href="/parentuser/status/1234567889"></a>
+              <div class="tweet-body">
+                <div class="tweet-header">
+                  <a class="fullname">Parent User</a><a class="username">@parentuser</a>
+                </div>
+                <div class="tweet-content">Parent</div>
+              </div>
+            </div>
+          </div>
+          <div class="main-tweet">
+            <div class="timeline-item" data-username="nasa">
+              <a class="tweet-link" href="/nasa/status/1234567890"></a>
+              <div class="tweet-body">
+                <div class="tweet-header">
+                  <a class="fullname">NASA</a><a class="username">@nasa</a>
+                </div>
+                <div class="tweet-content">Hello</div>
+              </div>
+            </div>
+          </div>
+          <div class="replies">
+            <div class="timeline-item" data-username="replyuser">
+              <a class="tweet-link" href="/replyuser/status/1234567891"></a>
+              <div class="tweet-body">
+                <div class="tweet-header">
+                  <a class="fullname">Reply User</a><a class="username">@replyuser</a>
+                </div>
+                <div class="tweet-content">Reply</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
     },
   } as unknown as Fetcher;
   const scheduler = { isRunning: false, run: async () => {} };
@@ -72,10 +84,7 @@ test('tweet route fetches the tweet and its replies for valid params', async () 
   await withServer(app, async base => {
     const response = await fetch(`${base}/api/tweet/NASA/1234567890`);
     assert.equal(response.status, 200);
-    assert.deepEqual(fetchedPaths, [
-      '/api/tweet/1234567890',
-      '/api/tweet/1234567890/replies',
-    ]);
+    assert.deepEqual(fetchedPaths, ['/nasa/status/1234567890']);
     const body = await response.json() as {
       tweet: { id: string } | null;
       replies: Array<{ id: string; authorHandle: string }>;

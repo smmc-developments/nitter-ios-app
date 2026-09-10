@@ -18,6 +18,7 @@ enum APIClientError: LocalizedError {
 /// via a real Chrome browser, avoiding rate-limiting on the iOS device.
 actor APIClient {
     static let shared = APIClient()
+    private static let cachedAccountUsernamesKey = "server.cachedAccountUsernames"
 
     /// Configurable base URL — defaults to localhost; override via
     /// UserDefaults key "server.baseURL" for LAN testing.
@@ -129,7 +130,12 @@ actor APIClient {
         let accounts = try decoder.decode([ServerAccount].self, from: data)
         cachedAccounts = accounts
         cachedAccountsAt = .now
+        storeAccountUsernames(accounts.map(\.username))
         return accounts
+    }
+
+    func lastKnownAccountUsernames() -> [String] {
+        SharedSettings.defaults.stringArray(forKey: Self.cachedAccountUsernamesKey) ?? []
     }
 
     func addAccount(_ username: String) async throws -> ServerAccount {
@@ -139,7 +145,13 @@ actor APIClient {
         request.httpBody = try JSONEncoder().encode(["username": username])
         let (data, response) = try await session.data(for: request)
         try checkResponse(response)
-        return try decoder.decode(ServerAccount.self, from: data)
+        let account = try decoder.decode(ServerAccount.self, from: data)
+        var usernames = lastKnownAccountUsernames()
+        if !usernames.contains(where: { $0.caseInsensitiveCompare(account.username) == .orderedSame }) {
+            usernames.append(account.username)
+            storeAccountUsernames(usernames)
+        }
+        return account
     }
 
     func removeAccount(_ username: String) async throws {
@@ -148,6 +160,9 @@ actor APIClient {
         let (_, response) = try await session.data(for: request)
         try checkResponse(response)
         cachedAccounts = nil
+        storeAccountUsernames(lastKnownAccountUsernames().filter {
+            $0.caseInsensitiveCompare(username) != .orderedSame
+        })
     }
 
     // MARK: - Health
@@ -195,6 +210,10 @@ actor APIClient {
         guard (200...299).contains(http.statusCode) else {
             throw APIClientError.httpError(http.statusCode)
         }
+    }
+
+    private func storeAccountUsernames(_ usernames: [String]) {
+        SharedSettings.defaults.set(usernames, forKey: Self.cachedAccountUsernamesKey)
     }
 }
 
