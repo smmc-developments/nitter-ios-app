@@ -111,12 +111,15 @@ async function main() {
   app.set('trust proxy', 1);
   app.use(express.json());
 
-  // Request logging middleware
+  // Request logging middleware. The iOS logs view polls /api/logs every few
+  // seconds, so keep those at debug to avoid flooding the log buffer.
   app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
       const elapsed = Date.now() - start;
-      log(`${req.method} ${req.path} ${res.statusCode} ${elapsed}ms`);
+      const line = `${req.method} ${req.path} ${res.statusCode} ${elapsed}ms`;
+      if (req.path === '/api/logs') log.debug(line);
+      else log(line);
     });
     next();
   });

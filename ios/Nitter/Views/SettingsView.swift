@@ -64,6 +64,12 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Diagnostics") {
+                    NavigationLink("Server Logs") {
+                        ServerLogsView()
+                    }
+                }
+
                 Section {
                     LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")
                 }

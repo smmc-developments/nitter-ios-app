@@ -29,12 +29,46 @@ export interface Logger {
   error(message: string): void;
 }
 
+export interface LogEntry {
+  id: number;
+  ts: string;
+  level: Exclude<LogLevel, 'silent'>;
+  scope: string;
+  message: string;
+}
+
 const configuredLevel = parseLogLevel(process.env.LOG_LEVEL);
+const bufferSize = parseBufferSize(process.env.LOG_BUFFER_SIZE);
+const buffer: LogEntry[] = [];
+let nextLogId = 1;
+
+function parseBufferSize(value: string | undefined): number {
+  const parsed = Number(value ?? '1000');
+  return Number.isInteger(parsed) && parsed >= 100 && parsed <= 100_000 ? parsed : 1_000;
+}
+
+/// Recent log entries, newest last. `after` is an exclusive id watermark so
+/// clients can poll incrementally; `latest` is the current maximum id.
+export function getLogs(options: { limit?: number; after?: number; minLevel?: LogLevel } = {}): {
+  entries: LogEntry[];
+  latest: number;
+} {
+  const limit = options.limit ?? 200;
+  const after = options.after ?? 0;
+  const minLevel = options.minLevel ?? 'debug';
+  const entries = buffer
+    .filter(entry => entry.id > after && isLogLevelEnabled(entry.level, minLevel))
+    .slice(-limit);
+  return { entries, latest: buffer.length ? buffer[buffer.length - 1].id : 0 };
+}
 
 export function createLogger(scope: string, defaultLevel: Exclude<LogLevel, 'silent'> = 'info'): Logger {
   const write = (level: Exclude<LogLevel, 'silent'>, message: string) => {
     if (!isLogLevelEnabled(level, configuredLevel)) return;
-    const line = `[${new Date().toISOString()}] [${scope}] [${level}] ${message}`;
+    const ts = new Date().toISOString();
+    const line = `[${ts}] [${scope}] [${level}] ${message}`;
+    buffer.push({ id: nextLogId++, ts, level, scope, message });
+    if (buffer.length > bufferSize) buffer.splice(0, buffer.length - bufferSize);
     if (level === 'error') console.error(line);
     else if (level === 'warn') console.warn(line);
     else console.log(line);

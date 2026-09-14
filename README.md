@@ -172,6 +172,7 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `NITTER_BASE_URL` | `https://nitter.click` | Nitter instance used for timelines and media |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
 | `LOG_LEVEL` | `info` | Server output: `debug`, `info`, `warn`, `error`, or `silent` |
+| `LOG_BUFFER_SIZE` | `1000` | Recent log entries kept for `/api/logs` (Settings → Server Logs in the app) |
 | `MAX_ACCOUNTS_PER_CYCLE` | `40` | Max accounts fetched per automatic cycle |
 | `FETCH_CONCURRENCY` | `2` | Simultaneous fetch requests |
 | `FETCH_START_INTERVAL_MS` | `1000` | Delay between starting each fetch |

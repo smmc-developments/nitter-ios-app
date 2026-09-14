@@ -8,7 +8,7 @@ import {
 import { parseConversation } from './parser.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
-import { createLogger } from './logger.js';
+import { createLogger, getLogs, LOG_LEVELS, type LogLevel } from './logger.js';
 
 interface FetchScheduler {
   readonly isRunning: boolean;
@@ -120,6 +120,22 @@ router.get('/tweet/:username/:id', async (req, res) => {
     log.error(`GET /tweet/${username}/${tweetId} FAILED: ${msg}`);
     res.status(502).json({ error: msg });
   }
+});
+
+// ---------- logs ----------
+
+router.get('/logs', (req, res) => {
+  const limit = parseLimit(req.query.limit, 200, 1_000);
+  const rawAfter = typeof req.query.after === 'string' ? Number.parseInt(req.query.after, 10) : 0;
+  const after = Number.isFinite(rawAfter) && rawAfter > 0 ? rawAfter : 0;
+  const rawLevel = typeof req.query.level === 'string' ? req.query.level.trim().toLowerCase() : 'debug';
+  if (!LOG_LEVELS.includes(rawLevel as LogLevel) || rawLevel === 'silent') {
+    return res.status(400).json({ error: 'Invalid level' });
+  }
+  const result = getLogs({ limit, after, minLevel: rawLevel as LogLevel });
+  // Debug — the iOS logs view polls this endpoint; info would flood the buffer.
+  log.debug(`GET /logs — returning ${result.entries.length} entr(ies) after=${after}`);
+  res.json(result);
 });
 
 // ---------- image proxy ----------

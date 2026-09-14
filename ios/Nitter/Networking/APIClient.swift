@@ -182,6 +182,19 @@ actor APIClient {
         try checkResponse(response)
     }
 
+    // MARK: - Logs
+
+    func fetchLogs(after: Int = 0, limit: Int = 500, level: String? = nil) async throws -> ServerLogResponse {
+        var items = [URLQueryItem(name: "limit", value: String(limit))]
+        if after > 0 { items.append(.init(name: "after", value: String(after))) }
+        if let level { items.append(.init(name: "level", value: level)) }
+        let url = try endpoint(["api", "logs"], queryItems: items)
+        let request = authorizedRequest(url)
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response)
+        return try decoder.decode(ServerLogResponse.self, from: data)
+    }
+
     // MARK: - Tweet Detail
 
     struct TweetDetail: Decodable {
@@ -314,4 +327,25 @@ struct ServerTweetPreview: Decodable {
 
 private struct ServerTweetList: Decodable {
     let tweets: [ServerTweet]
+}
+
+// MARK: - Server log models
+
+struct ServerLogEntry: Decodable, Identifiable {
+    let id: Int
+    let ts: String
+    let level: String
+    let scope: String
+    let message: String
+
+    var date: Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: ts) ?? ISO8601DateFormatter().date(from: ts)
+    }
+}
+
+struct ServerLogResponse: Decodable {
+    let entries: [ServerLogEntry]
+    let latest: Int
 }

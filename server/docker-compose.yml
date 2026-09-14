@@ -8,6 +8,7 @@ services:
     environment:
       FETCH_MINUTES: ${FETCH_MINUTES:-15}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_BUFFER_SIZE: ${LOG_BUFFER_SIZE:-1000}
       API_KEY: ${API_KEY:-}
       PROXY_SECRET: ${PROXY_SECRET:-}
       WEB_USERNAME: ${WEB_USERNAME:-}
