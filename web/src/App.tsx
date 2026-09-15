@@ -1,6 +1,6 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
-import { Account, api, Tweet } from './api';
+import { Account, api, LogEntry, Tweet } from './api';
 
 type Theme = 'system' | 'light' | 'dark';
 
@@ -33,6 +33,11 @@ function formatDate(value: string | null) {
   if (!value) return '';
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : new Intl.DateTimeFormat(undefined, { timeStyle: 'medium' }).format(date);
 }
 
 function richText(text: string) {
@@ -263,6 +268,59 @@ function Accounts() {
   </Page>;
 }
 
+function Logs() {
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [level, setLevel] = useState('info');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const latestRef = useRef(0);
+
+  const load = async (full: boolean, currentLevel: string) => {
+    try {
+      const response = await api.logs(full ? 0 : latestRef.current, 500, currentLevel);
+      // A smaller latest than our watermark means the server restarted and
+      // reset its ids — resync from scratch.
+      if (full || response.latest < latestRef.current) setEntries(response.entries);
+      else setEntries(previous => [...previous, ...response.entries].slice(-1000));
+      latestRef.current = Math.max(latestRef.current, response.latest);
+      setError('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    latestRef.current = 0;
+    void load(true, level);
+    const timer = setInterval(() => void load(false, level), 5000);
+    return () => clearInterval(timer);
+  }, [level]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const copy = async () => {
+    const text = entries.map(entry => `[${entry.ts}] [${entry.scope}] [${entry.level}] ${entry.message}`).join('\n');
+    await navigator.clipboard.writeText(text).catch(() => undefined);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return <Page title="Server Logs" action={<span className="log-actions">
+    <select value={level} onChange={event => setLevel(event.target.value)} aria-label="Minimum level">
+      {['debug', 'info', 'warn', 'error'].map(option => <option key={option} value={option}>{option}</option>)}
+    </select>
+    <button onClick={() => void copy()} disabled={!entries.length}>{copied ? 'Copied' : 'Copy'}</button>
+  </span>}>
+    <State loading={loading && !entries.length} error={entries.length ? '' : error} empty={!entries.length && !error} />
+    <section className="log-stream">{[...entries].reverse().map(entry => <div className={`log-entry level-${entry.level}`} key={entry.id}>
+      <span className="log-meta">{formatTime(entry.ts)} <strong>{entry.level.toUpperCase()}</strong> {entry.scope}</span>
+      <span className="log-message">{entry.message}</span>
+    </div>)}</section>
+  </Page>;
+}
+
 function Settings() {
   const [server, setServer] = useState(localStorage.getItem('nitter.server') ?? '');
   const [key, setKey] = useState(localStorage.getItem('nitter.apiKey') ?? '');
@@ -282,7 +340,7 @@ function Settings() {
 
 function App() {
   useEffect(() => { document.documentElement.dataset.theme = localStorage.getItem('nitter.theme') || 'system'; }, []);
-  return <div className="app-shell"><aside><Link to="/" className="brand"><span>N</span><strong>Nitter</strong></Link><nav><NavLink to="/" end>Feed</NavLink><NavLink to="/accounts">Accounts</NavLink><NavLink to="/settings">Settings</NavLink></nav><p className="aside-note">A quiet reader for the loud web.</p></aside><div className="content"><Routes><Route path="/" element={<Feed />} /><Route path="/accounts" element={<Accounts />} /><Route path="/settings" element={<Settings />} /><Route path="/account/:username" element={<Timeline />} /><Route path="/tweet/:username/:id" element={<TweetDetail />} /><Route path="*" element={<Page title="Not found"><div className="state">This page does not exist.</div></Page>} /></Routes></div><nav className="mobile-nav"><NavLink to="/" end>Feed</NavLink><NavLink to="/accounts">Accounts</NavLink><NavLink to="/settings">Settings</NavLink></nav></div>;
+  return <div className="app-shell"><aside><Link to="/" className="brand"><span>N</span><strong>Nitter</strong></Link><nav><NavLink to="/" end>Feed</NavLink><NavLink to="/accounts">Accounts</NavLink><NavLink to="/logs">Logs</NavLink><NavLink to="/settings">Settings</NavLink></nav><p className="aside-note">A quiet reader for the loud web.</p></aside><div className="content"><Routes><Route path="/" element={<Feed />} /><Route path="/accounts" element={<Accounts />} /><Route path="/logs" element={<Logs />} /><Route path="/settings" element={<Settings />} /><Route path="/account/:username" element={<Timeline />} /><Route path="/tweet/:username/:id" element={<TweetDetail />} /><Route path="*" element={<Page title="Not found"><div className="state">This page does not exist.</div></Page>} /></Routes></div><nav className="mobile-nav"><NavLink to="/" end>Feed</NavLink><NavLink to="/accounts">Accounts</NavLink><NavLink to="/logs">Logs</NavLink><NavLink to="/settings">Settings</NavLink></nav></div>;
 }
 
 export default App;

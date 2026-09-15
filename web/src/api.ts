@@ -40,6 +40,19 @@ export interface Account {
   backfill_complete: number;
 }
 
+export interface LogEntry {
+  id: number;
+  ts: string;
+  level: string;
+  scope: string;
+  message: string;
+}
+
+export interface LogResponse {
+  entries: LogEntry[];
+  latest: number;
+}
+
 const settings = {
   get baseURL() { return localStorage.getItem('nitter.server')?.replace(/\/$/, '') ?? ''; },
   get apiKey() { return localStorage.getItem('nitter.apiKey') ?? ''; },
@@ -66,4 +79,9 @@ export const api = {
   removeAccount: (username: string) => request<{ ok: boolean }>(`/api/accounts/${encodeURIComponent(username)}`, { method: 'DELETE' }),
   refresh: () => request<{ ok: boolean }>('/api/fetch', { method: 'POST' }),
   health: () => request<{ ok: boolean }>('/health'),
+  logs: (after = 0, limit = 500, level = 'debug') => {
+    const params = new URLSearchParams({ limit: String(limit), level });
+    if (after > 0) params.set('after', String(after));
+    return request<LogResponse>(`/api/logs?${params}`);
+  },
 };
