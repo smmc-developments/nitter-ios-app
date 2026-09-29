@@ -49,6 +49,8 @@ npm run dev
 
 Vite proxies `/api` and `/health` to the local server. Run `npm run build` and `npm test` to validate production changes.
 
+Each post has a **Share** button that copies its public Nitter link using the server's configured `NITTER_BASE_URL`, including for cached posts from a previous instance.
+
 ## Server
 
 ### Production Deployment (Docker Compose)

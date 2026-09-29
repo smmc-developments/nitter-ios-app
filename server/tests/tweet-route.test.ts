@@ -9,6 +9,7 @@ import type { ImageCache } from '../src/image-cache.js';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'nitter-tweet-route-'));
 process.env.DATA_DIR = dataDir;
+process.env.NITTER_BASE_URL = 'https://nitter.example/nitter/';
 
 const { createRouter } = await import('../src/routes.js');
 const database = await import('../src/db.js');
@@ -86,14 +87,71 @@ test('tweet route fetches the tweet and its replies for valid params', async () 
     assert.equal(response.status, 200);
     assert.deepEqual(fetchedPaths, ['/nasa/status/1234567890']);
     const body = await response.json() as {
-      tweet: { id: string } | null;
-      replies: Array<{ id: string; authorHandle: string }>;
+      tweet: { id: string; statusURL: string } | null;
+      replies: Array<{ id: string; authorHandle: string; statusURL: string }>;
     };
     assert.equal(body.tweet?.id, '1234567890');
     assert.equal(body.replies.length, 1);
     assert.equal(body.replies[0].id, '1234567891');
     assert.equal(body.replies[0].authorHandle, 'replyuser');
+    assert.equal(body.tweet?.statusURL, 'https://nitter.example/nitter/nasa/status/1234567890');
+    assert.equal(body.replies[0].statusURL, 'https://nitter.example/nitter/replyuser/status/1234567891');
   });
+});
+
+test('feed and timeline links use the current instance for cached reposts and missing URLs', async () => {
+  database.addAccount('resharer');
+  const cachedTweet = {
+    id: '1234567893',
+    account_username: 'resharer',
+    author_name: 'Original Author',
+    author_handle: '@original',
+    avatar_url: null,
+    date: '2026-09-29T12:00:00Z',
+    text_content: 'Cached post',
+    status_url: 'https://old-instance.example/original/status/1234567893#summary',
+    reply_count: 0,
+    retweet_count: 0,
+    like_count: 0,
+    view_count: 0,
+    photo_urls: null,
+    video_poster_url: null,
+    video_url: null,
+    retweeted_by: 'Resharer',
+    is_pinned: 0,
+    quoted_text: null,
+    quoted_handle: null,
+  };
+  database.upsertTweet(cachedTweet);
+  database.upsertTweet({ ...cachedTweet, id: '1234567894', status_url: null });
+  database.upsertTweet({ ...cachedTweet, id: '1234567895', author_handle: null, status_url: 'https://old-instance.example/original/status/1234567895' });
+
+  const { app } = setup();
+  await withServer(app, async base => {
+    for (const path of ['/api/feed', '/api/timeline/resharer']) {
+      const response = await fetch(`${base}${path}`);
+      assert.equal(response.status, 200);
+      const body = await response.json() as { tweets: Array<{ id: string; statusURL: string }> };
+      for (const id of ['1234567893', '1234567894', '1234567895']) {
+        assert.equal(body.tweets.find(tweet => tweet.id === id)?.statusURL, `https://nitter.example/nitter/original/status/${id}`);
+      }
+    }
+  });
+});
+
+test('post links use the default Nitter instance when none is configured', async () => {
+  const configuredBaseUrl = process.env.NITTER_BASE_URL;
+  delete process.env.NITTER_BASE_URL;
+  try {
+    const { app } = setup();
+    await withServer(app, async base => {
+      const response = await fetch(`${base}/api/tweet/nasa/1234567890`);
+      const body = await response.json() as { tweet: { statusURL: string } };
+      assert.equal(body.tweet.statusURL, 'https://nitter.click/nasa/status/1234567890');
+    });
+  } finally {
+    process.env.NITTER_BASE_URL = configuredBaseUrl;
+  }
 });
 
 test('timeline route emits decodable defaults for malformed legacy rows', async () => {

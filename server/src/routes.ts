@@ -24,6 +24,7 @@ export function createRouter(
   proxySecret: string,
 ) {
 const router = Router();
+const nitterBaseUrl = (process.env.NITTER_BASE_URL || 'https://nitter.click').replace(/\/+$/, '');
 
 router.post('/fetch', (_req, res) => {
   if (scheduler.isRunning) {
@@ -208,6 +209,14 @@ router.get('/proxy', async (req, res) => {
 
 // ---------- helpers ----------
 
+function statusUrl(row: TweetRow): string | null {
+  // Cached URLs may belong to a previously configured instance. Rebuild the
+  // public link using the current instance and the original author's handle.
+  const handle = row.author_handle?.replace(/^@/, '')
+    || row.status_url?.match(/\/([A-Za-z0-9_]{1,15})\/status\/\d+/)?.[1];
+  return handle ? `${nitterBaseUrl}/${encodeURIComponent(handle)}/status/${encodeURIComponent(row.id)}` : null;
+}
+
 function formatTweet(row: TweetRow, baseUrl?: string) {
   const proxy = baseUrl ? (url: string | null) => url ? proxyUrl(baseUrl, url, proxySecret) : null : (url: string | null) => url;
   const proxyArr = baseUrl ? (urls: string[]) => urls.map(u => proxyUrl(baseUrl, u, proxySecret)) : (urls: string[]) => urls;
@@ -218,7 +227,7 @@ function formatTweet(row: TweetRow, baseUrl?: string) {
     avatarURL: proxy(row.avatar_url),
     date: row.date,
     text: row.text_content ?? '',
-    statusURL: row.status_url,
+    statusURL: statusUrl(row),
     replyCount: row.reply_count ?? 0,
     retweetCount: row.retweet_count ?? 0,
     likeCount: row.like_count ?? 0,

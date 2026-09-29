@@ -1,6 +1,7 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Route, Routes, useParams } from 'react-router-dom';
 import { Account, api, LogEntry, Tweet } from './api';
+import { copyText } from './clipboard';
 
 type Theme = 'system' | 'light' | 'dark';
 
@@ -196,6 +197,32 @@ function Media({ tweet }: { tweet: Tweet }) {
   </>;
 }
 
+function ShareButton({ url }: { url: string | null }) {
+  const [status, setStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+
+  useEffect(() => {
+    if (status !== 'copied') return;
+    const timer = setTimeout(() => setStatus('idle'), 1500);
+    return () => clearTimeout(timer);
+  }, [status]);
+
+  const share = async () => {
+    if (!url) return;
+    setStatus('copying');
+    try {
+      await copyText(url);
+      setStatus('copied');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  return <>
+    <button type="button" className="quiet share-button" title={url ? 'Copy Nitter link' : 'No post link available'} disabled={!url || status === 'copying'} onClick={() => void share()} aria-live="polite">{status === 'copied' ? 'Copied' : status === 'copying' ? 'Copying...' : 'Share'}</button>
+    {status === 'error' && <span className="share-error" role="alert">Unable to copy the link. <a href={url ?? undefined} target="_blank" rel="noreferrer">Open the Nitter post</a> to copy its URL.</span>}
+  </>;
+}
+
 function TweetCard({ tweet, detail = false }: { tweet: Tweet; detail?: boolean }) {
   const handle = (tweet.authorHandle ?? '').replace(/^@/, '');
   const body = <>
@@ -212,7 +239,7 @@ function TweetCard({ tweet, detail = false }: { tweet: Tweet; detail?: boolean }
     <Media tweet={tweet} />
     <div className="metrics"><span>{tweet.replyCount} replies</span><span>{tweet.retweetCount} reposts</span><span>{tweet.likeCount} likes</span><span>{tweet.viewCount} views</span></div>
   </>;
-  return <article className={`tweet ${detail ? 'detail' : ''}`}><div className="tweet-body">{body}{!detail && <Link className="thread-link" to={`/tweet/${handle}/${tweet.id}`}>Open conversation</Link>}</div></article>;
+  return <article className={`tweet ${detail ? 'detail' : ''}`}><div className="tweet-body">{body}<div className="tweet-actions">{!detail && <Link className="thread-link" to={`/tweet/${handle}/${tweet.id}`}>Open conversation</Link>}<ShareButton url={tweet.statusURL} /></div></div></article>;
 }
 
 function Feed() {
