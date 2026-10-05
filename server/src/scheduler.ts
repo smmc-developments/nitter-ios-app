@@ -1,4 +1,4 @@
-import { Fetcher } from './fetcher.js';
+import { Fetcher, type FetchedPage } from './fetcher.js';
 import { belongsToTimeline, parseParentTweet, parseTimeline } from './parser.js';
 import {
   listAccounts, updateAccountFetch,
@@ -89,8 +89,8 @@ export class Scheduler {
 
         while (path && page < MAX_PAGES_PER_ACCOUNT && !seenPaths.has(path)) {
           seenPaths.add(path);
-          const html = await this.fetchPageWithRetry(path, account.username);
-          const result = parseTimeline(html, account.username);
+          const { html, baseUrl } = await this.fetchPageWithRetry(path, account.username);
+          const result = parseTimeline(html, account.username, baseUrl);
           if (page === 0) profile = result.account;
           // `/with_replies` renders reply threads, including the parent tweets
           // being replied to. Only store tweets that belong to this timeline.
@@ -157,7 +157,7 @@ export class Scheduler {
     }
   }
 
-  private async fetchPageWithRetry(path: string, username: string): Promise<string> {
+  private async fetchPageWithRetry(path: string, username: string): Promise<FetchedPage> {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await this.waitForStartSlot();
       try {
@@ -181,8 +181,8 @@ export class Scheduler {
     }
     try {
       const path = new URL(statusUrl).pathname;
-      const html = await this.fetchPageWithRetry(path, username);
-      const parent = parseParentTweet(html);
+      const { html, baseUrl } = await this.fetchPageWithRetry(path, username);
+      const parent = parseParentTweet(html, baseUrl);
       storeParentTweet(replyId, parent, parent ? 'found' : 'unavailable');
       if (parent?.avatarUrl) this.imageCache.prefetch([parent.avatarUrl]);
       log(`@${username}: parent context ${parent ? 'found' : 'unavailable'} for ${replyId}`);

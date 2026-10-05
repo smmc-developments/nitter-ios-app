@@ -21,9 +21,10 @@ export interface ConversationResult {
   replies: TweetRow[];
 }
 
-export function parseTimeline(html: string, accountUsername: string): ParseResult {
+export function parseTimeline(html: string, accountUsername: string, baseUrl = NITTER_BASE_URL): ParseResult {
   log(`Parsing HTML for @${accountUsername} (${html.length} bytes)`);
   const $ = cheerio.load(html);
+  const resolve = (url: string) => resolveUrl(url, baseUrl);
   const tweets: TweetRow[] = [];
   let account: ParseResult['account'] = null;
 
@@ -34,7 +35,7 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
     const name = card.find('.profile-card-fullname').first().text().trim();
     const avatar = card.find('.profile-card-avatar img').first().attr('src') ?? null;
     if (handle) {
-      account = { handle, name: name || handle, avatarUrl: avatar ? resolveUrl(avatar) : null };
+      account = { handle, name: name || handle, avatarUrl: avatar ? resolve(avatar) : null };
       log(`Profile card found: @${handle} (${name}), avatar: ${avatar ? 'yes' : 'no'}`);
     }
   } else {
@@ -69,7 +70,7 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
     // Fallback account info from first tweet.
     if (!account && handle) {
       const avatar = header.find('.tweet-avatar img').first().attr('src') ?? null;
-      account = { handle, name, avatarUrl: avatar ? resolveUrl(avatar) : null };
+      account = { handle, name, avatarUrl: avatar ? resolve(avatar) : null };
       log(`Fallback account from first tweet: @${handle} (${name})`);
     }
 
@@ -89,7 +90,7 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
     const date = normalizeTweetDate(dateStr);
 
     // Text (preserve newlines from <br>).
-    const text = normalizedText($, content);
+    const text = normalizedText($, content, baseUrl);
 
     // Retweet header.
     const rtHeader = body.find('.retweet-header').first();
@@ -109,7 +110,7 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
     const photoUrls: string[] = [];
     body.children('.attachments').find('.attachment a.still-image img').each((_, img) => {
       const src = $(img).attr('src');
-      if (src) photoUrls.push(resolveUrl(src));
+      if (src) photoUrls.push(resolve(src));
     });
 
     // Video poster and source. Current Nitter uses a download link with an
@@ -120,14 +121,14 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
     const rawPoster = videoAttachment.find('video').first().attr('poster')
       ?? videoAttachment.find('img').first().attr('src')
       ?? null;
-    const videoPoster = rawPoster ? resolveUrl(rawPoster) : null;
+    const videoPoster = rawPoster ? resolve(rawPoster) : null;
     const video = videoAttachment.find('video').first();
     const rawVideo = video.find('source[type="video/mp4"]').first().attr('src')
       ?? video.find('source').first().attr('src')
       ?? video.attr('src')
       ?? videoAttachment.find('a.video-download').first().attr('href')
       ?? null;
-    const videoUrl = rawVideo ? resolveVideoUrl(rawVideo) : null;
+    const videoUrl = rawVideo ? resolveVideoUrl(rawVideo, baseUrl) : null;
 
     // Quote.
     const quoteText = body.find('.quote .quote-text').first().text().trim() || null;
@@ -146,10 +147,10 @@ export function parseTimeline(html: string, accountUsername: string): ParseResul
 
     // Avatar.
     const rawAvatar = header.find('.tweet-avatar img').first().attr('src') ?? null;
-    const avatarUrl = rawAvatar ? resolveUrl(rawAvatar) : null;
+    const avatarUrl = rawAvatar ? resolve(rawAvatar) : null;
 
     // Status URL.
-    const statusUrl = tweetLink ? NITTER_BASE_URL + tweetLink.split('#')[0] : null;
+    const statusUrl = tweetLink ? resolve(tweetLink.split('#')[0]) : null;
 
     // For multi-user pages (comma-separated accountUsername), set account_username
     // to the actual author handle (lowercased) so FK constraint is satisfied.
@@ -196,8 +197,9 @@ export function parseConversation(
   html: string,
   accountUsername: string,
   tweetId: string,
+  baseUrl = NITTER_BASE_URL,
 ): ConversationResult {
-  const parsed = parseTimeline(html, accountUsername);
+  const parsed = parseTimeline(html, accountUsername, baseUrl);
   const $ = cheerio.load(html);
   const replyIds = new Set<string>();
 
@@ -226,7 +228,7 @@ export interface ParentTweetSnapshot {
   text: string;
 }
 
-export function parseParentTweet(html: string): ParentTweetSnapshot | null {
+export function parseParentTweet(html: string, baseUrl = NITTER_BASE_URL): ParentTweetSnapshot | null {
   const $ = cheerio.load(html);
   const item = $('.before-tweet .timeline-item').filter((_, element) =>
     $(element).find('.tweet-body .tweet-content').length > 0
@@ -248,12 +250,12 @@ export function parseParentTweet(html: string): ParentTweetSnapshot | null {
   const dateString = header.find('.tweet-date a').first().attr('title') ?? '';
   return {
     id,
-    statusUrl: resolveUrl(link.split('#')[0]),
+    statusUrl: resolveUrl(link.split('#')[0], baseUrl),
     authorName,
     authorHandle,
-    avatarUrl: avatar ? resolveUrl(avatar) : null,
+    avatarUrl: avatar ? resolveUrl(avatar, baseUrl) : null,
     date: normalizeTweetDate(dateString),
-    text: normalizedText($, body.find('.tweet-content').first()),
+    text: normalizedText($, body.find('.tweet-content').first(), baseUrl),
   };
 }
 
@@ -276,14 +278,14 @@ function derivedReplyHandles($: any, el: any): string[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizedText($: any, el: any): string {
-  return innerText($, el)
+function normalizedText($: any, el: any, baseUrl: string): string {
+  return innerText($, el, baseUrl)
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function innerText($: any, el: any): string {
+function innerText($: any, el: any, baseUrl: string): string {
   let result = '';
   el.contents().each((_: number, child: any) => {
     if (child.type === 'text') {
@@ -292,20 +294,20 @@ function innerText($: any, el: any): string {
       result += '\n';
     } else if (child.type === 'tag') {
       const element = $(child);
-      const label = innerText($, element);
-      result += child.tagName === 'a' ? expandedLinkText(element.attr('href'), label) : label;
+      const label = innerText($, element, baseUrl);
+      result += child.tagName === 'a' ? expandedLinkText(element.attr('href'), label, baseUrl) : label;
     }
   });
   return result;
 }
 
-function expandedLinkText(href: string | undefined, label: string): string {
+function expandedLinkText(href: string | undefined, label: string, baseUrl: string): string {
   if (!href || (!label.includes('.') && !label.includes('…') && !label.includes('...'))) {
     return label;
   }
   try {
-    const url = new URL(href, NITTER_BASE_URL);
-    if (url.origin !== new URL(NITTER_BASE_URL).origin) return url.href;
+    const url = new URL(href, baseUrl);
+    if (url.origin !== new URL(baseUrl).origin) return url.href;
     const redirected = url.pathname === '/redirect' ? url.searchParams.get('url') : null;
     return redirected ? new URL(redirected).href : label;
   } catch {
@@ -313,13 +315,13 @@ function expandedLinkText(href: string | undefined, label: string): string {
   }
 }
 
-function resolveUrl(url: string): string {
+function resolveUrl(url: string, baseUrl: string): string {
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return NITTER_BASE_URL + (url.startsWith('/') ? url : '/' + url);
+  return baseUrl.replace(/\/+$/, '') + (url.startsWith('/') ? url : '/' + url);
 }
 
-function resolveVideoUrl(value: string): string {
-  const resolved = resolveUrl(value);
+function resolveVideoUrl(value: string, baseUrl: string): string {
+  const resolved = resolveUrl(value, baseUrl);
   try {
     const path = new URL(resolved).pathname;
     const encodedDirectUrl = path.match(/^\/video\/[^/]+\/(.+)$/)?.[1];

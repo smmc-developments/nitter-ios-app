@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { belongsToTimeline, parseParentTweet, parseTimeline } from '../src/parser.js';
+import { belongsToTimeline, parseConversation, parseParentTweet, parseTimeline } from '../src/parser.js';
 
 test('retweet keeps requested timeline owner separate from original author', () => {
   const html = `
@@ -115,4 +115,40 @@ test('parses current Nitter video download markup', () => {
   const tweet = parseTimeline(html, 'alice').tweets[0];
   assert.equal(tweet.video_poster_url, 'https://nitter.click/pic/amplify_video_thumb%2Fposter.jpg%3Fname%3Dsmall');
   assert.equal(tweet.video_url, 'https://video.twimg.com/clip.mp4');
+});
+
+test('timeline, conversation, and parent media resolve against the host that served each response', () => {
+  const html = `
+    <div class="profile-card">
+      <span class="profile-card-username">@alice</span>
+      <div class="profile-card-avatar"><img src="/pic/profile.jpg"></div>
+    </div>
+    <div class="before-tweet">
+      <div class="timeline-item" data-username="alice">
+        <a class="tweet-link" href="/alice/status/111#summary"></a>
+        <div class="tweet-body">
+          <div class="tweet-header"><a class="username">@alice</a><div class="tweet-avatar"><img src="/pic/avatar.jpg"></div></div>
+          <div class="tweet-content">Read <a href="/redirect?url=https%3A%2F%2Fexample.com%2Farticle">example.com/…</a></div>
+          <div class="attachments">
+            <div class="attachment"><a class="still-image"><img src="/pic/photo.jpg"></a></div>
+            <div class="attachment"><video poster="/pic/poster.jpg"><source src="/video/clip.mp4"></video></div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  for (const base of ['https://first.example', 'https://second.example']) {
+    const parsed = parseTimeline(html, 'alice', base);
+    const tweet = parsed.tweets[0];
+    assert.equal(parsed.account?.avatarUrl, base + '/pic/profile.jpg');
+    assert.equal(tweet.status_url, base + '/alice/status/111');
+    assert.equal(tweet.avatar_url, base + '/pic/avatar.jpg');
+    assert.deepEqual(JSON.parse(tweet.photo_urls!), [base + '/pic/photo.jpg']);
+    assert.equal(tweet.video_poster_url, base + '/pic/poster.jpg');
+    assert.equal(tweet.video_url, base + '/video/clip.mp4');
+    assert.equal(tweet.text_content, 'Read https://example.com/article');
+    assert.equal(parseConversation(html, 'alice', '111', base).tweet?.avatar_url, base + '/pic/avatar.jpg');
+    const parent = parseParentTweet(html, base);
+    assert.equal(parent?.statusUrl, base + '/alice/status/111');
+    assert.equal(parent?.avatarUrl, base + '/pic/avatar.jpg');
+  }
 });

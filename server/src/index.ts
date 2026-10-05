@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { DATA_DIR } from './paths.js';
 import { createWebAuthMiddleware } from './web-auth.js';
 import { createLogger } from './logger.js';
+import { automaticInstances } from './instances.js';
 
 const PORT = parseIntegerEnv('PORT', 3000, 1, 65_535);
 const FETCH_MINUTES = parseIntegerEnv('FETCH_MINUTES', 15, 1, 24 * 60);
@@ -96,8 +97,14 @@ async function main() {
   const fetcher = new Fetcher();
   await fetcher.start();
   log('Fetcher initialized');
-  await fetcher.ensureSession();
-  log('Nitter session initialized');
+  try {
+    await fetcher.ensureSession();
+    log('Nitter session initialized');
+  } catch (error) {
+    if (!automaticInstances()) throw error;
+    // Keep cached feeds and server logs available during an upstream outage.
+    log.warn(`No initial Nitter session; automatic fetches will retry: ${String(error)}`);
+  }
 
   const imageCache = new ImageCache(fetcher);
 

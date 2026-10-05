@@ -4,6 +4,7 @@ import path from 'path';
 import type { Fetcher } from './fetcher.js';
 import { DATA_DIR } from './paths.js';
 import { createLogger } from './logger.js';
+import { configuredBaseUrl } from './instances.js';
 
 const log = createLogger('image-cache');
 
@@ -34,7 +35,7 @@ export class ImageCache {
   prefetch(urls: Array<string | null | undefined>) {
     for (const url of new Set(urls.filter((value): value is string => Boolean(value)))) {
       if (this.queue.length >= MAX_QUEUED_IMAGES) break;
-      if (!isAllowedImageUrl(url) || this.queued.has(url) || this.inFlight.has(url)) continue;
+      if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls) || this.queued.has(url) || this.inFlight.has(url)) continue;
       this.queued.add(url);
       this.queue.push(url);
     }
@@ -42,7 +43,7 @@ export class ImageCache {
   }
 
   async get(url: string): Promise<CachedImage> {
-    if (!isAllowedImageUrl(url)) throw new Error('Image URL is not allowed');
+    if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls)) throw new Error('Image URL is not allowed');
     const cached = await this.read(url);
     if (cached) return cached;
 
@@ -86,26 +87,35 @@ export class ImageCache {
   }
 
   private async fetchAndStore(url: string): Promise<CachedImage> {
-    const context = this.fetcher.getContext();
-    if (!context) throw new Error('Browser not ready');
+    const response = await this.fetcher.fetchImage(url);
+    try {
+      const contentType = response.headers.get('content-type') || '';
+      const contentLength = Number(response.headers.get('content-length') || 0);
+      if (!response.ok) throw new Error(`Image host returned ${response.status}`);
+      if (!contentType.toLowerCase().startsWith('image/')) throw new Error('Upstream response is not an image');
+      if (contentLength > MAX_IMAGE_BYTES) throw new Error('Image is too large');
 
-    let response = await context.request.fetch(url, { maxRedirects: 0, timeout: 15_000 });
-    if (response.status() === 503 || response.status() === 403) {
-      await this.fetcher.ensureSession(true);
-      response = await context.request.fetch(url, { maxRedirects: 0, timeout: 15_000 });
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Image response has no body');
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          size += value.byteLength;
+          if (size > MAX_IMAGE_BYTES) throw new Error('Image is too large');
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const image = { body: Buffer.concat(chunks, size), contentType };
+      await this.write(url, image);
+      return image;
+    } finally {
+      await response.body?.cancel().catch(() => {});
     }
-
-    const contentType = response.headers()['content-type'] || '';
-    const contentLength = Number(response.headers()['content-length'] || 0);
-    if (!response.ok()) throw new Error(`Image host returned ${response.status()}`);
-    if (!contentType.toLowerCase().startsWith('image/')) throw new Error('Upstream response is not an image');
-    if (contentLength > MAX_IMAGE_BYTES) throw new Error('Image is too large');
-
-    const body = await response.body();
-    if (body.length > MAX_IMAGE_BYTES) throw new Error('Image is too large');
-    const image = { body, contentType };
-    await this.write(url, image);
-    return image;
   }
 
   private async read(url: string): Promise<CachedImage | null> {
@@ -168,15 +178,15 @@ function cacheKey(url: string): string {
   return createHash('sha256').update(url).digest('hex');
 }
 
-export function isAllowedImageUrl(value: string): boolean {
+export function isAllowedImageUrl(value: string, bases: readonly string[] = [configuredBaseUrl()]): boolean {
   return isAllowedUrl(value, url =>
-    (isNitterUrl(url) && url.pathname.startsWith('/pic/') && !isMp4Path(url))
+    (isNitterUrl(url, bases) && url.pathname.startsWith('/pic/') && !isMp4Path(url))
     || (url.hostname === 'pbs.twimg.com' && !url.port && !isMp4Path(url)));
 }
 
-export function isAllowedVideoUrl(value: string): boolean {
+export function isAllowedVideoUrl(value: string, bases: readonly string[] = [configuredBaseUrl()]): boolean {
   return isAllowedUrl(value, url =>
-    (isNitterUrl(url) && (url.pathname.startsWith('/video/')
+    (isNitterUrl(url, bases) && (url.pathname.startsWith('/video/')
       || (url.pathname.startsWith('/pic/') && isMp4Path(url))))
     || (url.hostname === 'video.twimg.com' && !url.port && isMp4Path(url))
   );
@@ -194,9 +204,8 @@ function isAllowedUrl(value: string, acceptsUrl: (url: URL) => boolean): boolean
   }
 }
 
-function isNitterUrl(url: URL): boolean {
-  const base = new URL(process.env.NITTER_BASE_URL || 'https://nitter.click');
-  return url.hostname === base.hostname && url.port === base.port;
+function isNitterUrl(url: URL, bases: readonly string[]): boolean {
+  return bases.some(value => url.origin === new URL(value).origin);
 }
 
 function isMp4Path(url: URL): boolean {

@@ -2,13 +2,19 @@ import { chromium, type BrowserContext } from 'playwright';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
 import { createLogger } from './logger.js';
+import { NitterInstances } from './instances.js';
+import { isAllowedImageUrl } from './image-cache.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
-const BASE_URL = process.env.NITTER_BASE_URL || 'https://nitter.click';
 const MAX_MEDIA_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 const log = createLogger('fetcher');
+
+export interface FetchedPage {
+  html: string;
+  baseUrl: string;
+}
 
 function findChromePath(): string {
   const envPath = process.env.CHROME_PATH;
@@ -66,9 +72,13 @@ export class Fetcher {
   private chrome: ChildProcess | null = null;
   private context: BrowserContext | null = null;
   private ready = false;
-  private sessionReady = false;
-  private sessionPromise: Promise<void> | null = null;
+  private sessions = new Set<string>();
+  private sessionPromises = new Map<string, Promise<void>>();
   private userAgent = 'Mozilla/5.0';
+
+  constructor(private instances = new NitterInstances()) {}
+
+  get nitterBaseUrls(): readonly string[] { return this.instances.baseUrls; }
 
   async start() {
     log('initializing...');
@@ -105,7 +115,7 @@ export class Fetcher {
     });
     this.chrome.on('exit', (code, signal) => {
       this.ready = false;
-      this.sessionReady = false;
+      this.sessions.clear();
       this.context = null;
       log.warn(`Chrome process exited: code=${code} signal=${signal}`);
     });
@@ -159,7 +169,7 @@ export class Fetcher {
   async stop() {
     log('Stopping...');
     this.ready = false;
-    this.sessionReady = false;
+    this.sessions.clear();
     if (this.context) {
       try {
         await this.context.browser()?.close();
@@ -184,38 +194,77 @@ export class Fetcher {
     return this.context;
   }
 
-  async ensureSession(forceRefresh = false): Promise<void> {
+  async ensureSession(forceRefresh = false, baseUrl?: string, path = '/'): Promise<void> {
     if (!this.ready || !this.context) throw new Error('Fetcher not started');
-    if (forceRefresh) this.sessionReady = false;
-    if (this.sessionReady) return;
-    if (this.sessionPromise) return this.sessionPromise;
+    if (!baseUrl) {
+      const tried = new Set<string>();
+      let lastError: unknown;
+      for (let attempt = 0; attempt < (this.instances.automatic ? 3 : 1); attempt++) {
+        let base: string;
+        try { base = await this.instances.select(tried); } catch (error) { throw lastError ?? error; }
+        tried.add(base);
+        try {
+          await this.ensureSession(forceRefresh, base, path);
+          return;
+        } catch (error) {
+          lastError = error;
+          this.instances.failed(base, error);
+        }
+      }
+      throw lastError;
+    }
+    if (forceRefresh) this.sessions.delete(baseUrl);
+    if (this.sessions.has(baseUrl)) return;
+    const existing = this.sessionPromises.get(baseUrl);
+    if (existing) return existing;
 
-    const promise = this.solveChallenge('/');
-    this.sessionPromise = promise;
+    const promise = this.solveChallenge(path, baseUrl).catch(error => {
+      throw new InstanceUnavailableError(`Session bootstrap failed for ${baseUrl}: ${String(error)}`);
+    });
+    this.sessionPromises.set(baseUrl, promise);
     try {
       await promise;
-      this.sessionReady = true;
-      log('Nitter HTTP session ready');
+      this.sessions.add(baseUrl);
+      log(`Nitter HTTP session ready for ${baseUrl}`);
     } finally {
-      this.sessionPromise = null;
+      this.sessionPromises.delete(baseUrl);
     }
   }
 
-  async fetchPage(path: string): Promise<string> {
+  async fetchPage(path: string): Promise<FetchedPage> {
     if (!this.ready || !this.context) throw new Error('Fetcher not started');
-
-    if (this.sessionReady) {
+    const tried = new Set<string>();
+    let lastError: unknown;
+    for (let attempt = 0; attempt < (this.instances.automatic ? 3 : 1); attempt++) {
+      let baseUrl: string;
+      try { baseUrl = await this.instances.select(tried); } catch (error) { throw lastError ?? error; }
+      tried.add(baseUrl);
       try {
-        return await this.fetchWithRequest(path);
-      } catch (err) {
-        if (!(err instanceof SessionExpiredError)) throw err;
-        log(`HTTP session expired for ${path}; re-running browser challenge`);
-        this.sessionReady = false;
+        await this.ensureSession(false, baseUrl);
+        let html: string;
+        try {
+          html = await this.fetchWithRequest(path, baseUrl);
+        } catch (error) {
+          if (!(error instanceof SessionExpiredError)) throw error;
+          log(`HTTP session expired for ${baseUrl}${path}; re-running browser challenge`);
+          await this.ensureSession(true, baseUrl, path);
+          html = await this.fetchWithRequest(path, baseUrl);
+        }
+        // Carry the origin with each response; concurrent requests can finish
+        // on different instances while another request is switching hosts.
+        return { html, baseUrl };
+      } catch (error) {
+        if (!(error instanceof InstanceUnavailableError)) throw error;
+        lastError = error;
+        this.instances.failed(baseUrl, error);
       }
     }
+    throw lastError;
+  }
 
-    await this.ensureSession();
-    return this.fetchWithRequest(path);
+  async fetchImage(url: string): Promise<Response> {
+    return this.fetchAsset(url, {}, new AbortController().signal, 'GET',
+      value => isAllowedImageUrl(value, this.nitterBaseUrls), 'image');
   }
 
   async fetchMedia(
@@ -225,23 +274,68 @@ export class Fetcher {
     method: 'GET' | 'HEAD' = 'GET',
     isAllowedRedirect: (url: string) => boolean,
   ): Promise<Response> {
-    if (!this.ready || !this.context) throw new Error('Fetcher not started');
-    await this.ensureSession();
+    return this.fetchAsset(url, headers, signal, method, isAllowedRedirect, 'video');
+  }
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const cookies = await this.context.cookies(BASE_URL);
-      const cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-      const response = await this.fetchMediaFollowingRedirects(
-        url, headers, signal, method, cookie, isAllowedRedirect,
-      );
-      if (attempt === 0 && (response.status === 403 || response.status === 503)) {
-        await response.body?.cancel();
-        await this.ensureSession(true);
-        continue;
+  private async fetchAsset(
+    url: string,
+    headers: Record<string, string>,
+    signal: AbortSignal,
+    method: 'GET' | 'HEAD',
+    isAllowedRedirect: (url: string) => boolean,
+    kind: 'image' | 'video',
+  ): Promise<Response> {
+    if (!this.ready || !this.context) throw new Error('Fetcher not started');
+    signal.throwIfAborted();
+    if (!isAllowedRedirect(url)) throw new Error('Media URL is not allowed');
+    const instanceMedia = this.instances.isInstanceUrl(url);
+    const canSwitch = instanceMedia && this.instances.automatic;
+    const tried = new Set<string>();
+    let lastError: unknown;
+    for (let attempt = 0; attempt < (canSwitch ? 3 : 1); attempt++) {
+      signal.throwIfAborted();
+      let baseUrl: string | undefined;
+      let target = url;
+      if (instanceMedia) {
+        if (canSwitch) {
+          try { baseUrl = await this.instances.select(tried); } catch (error) { throw lastError ?? error; }
+          const original = new URL(url);
+          target = `${baseUrl}${original.pathname}${original.search}`;
+        } else {
+          baseUrl = this.nitterBaseUrls.find(base => new URL(base).origin === new URL(url).origin);
+        }
+        tried.add(baseUrl!);
       }
-      return response;
+      // Only configured/discovered media paths can be rewritten or followed.
+      if (!isAllowedRedirect(target)) throw new Error('Media URL is not allowed');
+      try {
+        if (baseUrl) await this.ensureSession(false, baseUrl);
+        let response: Response | undefined;
+        for (let sessionAttempt = 0; sessionAttempt < 2; sessionAttempt++) {
+          const requestSignal = kind === 'image' ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : signal;
+          response = await this.fetchMediaFollowingRedirects(target, headers, requestSignal, method, isAllowedRedirect, kind);
+          if (baseUrl && sessionAttempt === 0 && (response.status === 403 || response.status === 503)) {
+            await response.body?.cancel();
+            await this.ensureSession(true, baseUrl);
+            continue;
+          }
+          break;
+        }
+        const contentType = response!.headers.get('content-type')?.toLowerCase() ?? '';
+        const validStatus = response!.ok || (kind === 'video' && response!.status === 416);
+        if (!validStatus || (!contentType.startsWith(`${kind}/`)
+          && !(kind === 'video' && contentType.startsWith('application/octet-stream')))) {
+          await response!.body?.cancel();
+          throw new InstanceUnavailableError(`Upstream ${kind} request returned HTTP ${response!.status} (${contentType})`);
+        }
+        return response!;
+      } catch (error) {
+        if (!canSwitch || signal.aborted) throw error;
+        lastError = error;
+        this.instances.failed(baseUrl!, error);
+      }
     }
-    throw new Error('Unable to fetch video');
+    throw lastError;
   }
 
   // Follows redirects manually so every hop is re-validated against the same
@@ -253,20 +347,22 @@ export class Fetcher {
     headers: Record<string, string>,
     signal: AbortSignal,
     method: 'GET' | 'HEAD',
-    cookie: string,
     isAllowedRedirect: (url: string) => boolean,
+    kind: 'image' | 'video',
   ): Promise<Response> {
-    const baseHost = new URL(BASE_URL).host;
     let currentUrl = initialUrl;
     for (let redirectCount = 0; ; redirectCount++) {
       const requestHeaders: Record<string, string> = {
         ...headers,
-        accept: 'video/mp4,video/*;q=0.9,*/*;q=0.5',
+        accept: kind === 'video' ? 'video/mp4,video/*;q=0.9,*/*;q=0.5' : 'image/*',
         'user-agent': this.userAgent,
       };
       // Session cookies are only for the Nitter origin — never leak them to
       // redirect targets on other hosts.
-      if (new URL(currentUrl).host === baseHost) requestHeaders.cookie = cookie;
+      if (this.instances.isInstanceUrl(currentUrl)) {
+        const cookies = await this.context!.cookies(currentUrl);
+        requestHeaders.cookie = cookies.map(c => `${c.name}=${c.value}`).join('; ');
+      }
       const response = await fetch(currentUrl, {
         method,
         headers: requestHeaders,
@@ -277,42 +373,51 @@ export class Fetcher {
       if (!REDIRECT_STATUSES.has(response.status) || !location) return response;
       await response.body?.cancel();
       if (redirectCount >= MAX_MEDIA_REDIRECTS) {
-        throw new Error('Video redirected too many times');
+        throw new Error('Media redirected too many times');
       }
       const nextUrl = new URL(location, currentUrl).href;
       if (!isAllowedRedirect(nextUrl)) {
         log.warn(`fetchMedia — blocked redirect to disallowed URL: ${nextUrl.slice(0, 160)}`);
-        throw new Error('Video redirect target is not allowed');
+        throw new Error('Media redirect target is not allowed');
       }
       currentUrl = nextUrl;
     }
   }
 
-  private async fetchWithRequest(path: string): Promise<string> {
+  private async fetchWithRequest(path: string, baseUrl: string): Promise<string> {
     if (!this.context) throw new Error('Fetcher not started');
-    const url = `${BASE_URL}${path}`;
+    const url = `${baseUrl}${path}`;
     const startTime = Date.now();
-    const response = await this.context.request.fetch(url, {
-      maxRedirects: 0,
-      timeout: 30_000,
-    });
-    const html = await response.text();
+    let response;
+    let html: string;
+    try {
+      response = await this.context.request.fetch(url, {
+        maxRedirects: 0, timeout: 30_000, headers: { 'user-agent': this.userAgent },
+      });
+      try { html = await response.text(); } finally { await response.dispose(); }
+    } catch (error) {
+      throw new InstanceUnavailableError(`Request failed for ${url}: ${String(error)}`);
+    }
     const lower = html.toLowerCase();
 
     if (response.status() === 429 || lower.includes('too many requests')) {
-      throw new Error(`429 rate limited for ${path}`);
+      throw new InstanceUnavailableError(`429 rate limited for ${path}`);
     }
-    if (response.status() === 403 || response.status() === 503 || lower.includes('verifying your browser')) {
-      throw new SessionExpiredError();
+    if (response.status() === 403 || response.status() === 503 || lower.includes('verifying your browser')
+      || lower.includes('making sure you') || lower.includes('<title>oh noes!') || lower.includes('<title>just a moment')) {
+      throw new SessionExpiredError(`Browser session expired for ${url} (HTTP ${response.status()})`);
     }
     if (!response.ok()) {
+      if (response.status() >= 500 || REDIRECT_STATUSES.has(response.status())) {
+        throw new InstanceUnavailableError(`Nitter returned HTTP ${response.status()} for ${path}`);
+      }
       throw new Error(`Nitter returned HTTP ${response.status()} for ${path}`);
     }
     if (lower.includes('class="error-panel"')) {
-      throw new Error(`Nitter returned an error page for ${path}`);
+      throw new InstanceUnavailableError(`Nitter returned an error page for ${path}`);
     }
     if (!lower.includes('class="timeline') && !lower.includes('class="profile-card')) {
-      throw new Error(`Nitter returned incomplete HTML for ${path}`);
+      throw new InstanceUnavailableError(`Nitter returned incomplete HTML for ${path}`);
     }
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -320,16 +425,22 @@ export class Fetcher {
     return html;
   }
 
-  private async solveChallenge(path: string): Promise<void> {
+  private async solveChallenge(path: string, baseUrl: string): Promise<void> {
     if (!this.context) throw new Error('Fetcher not started');
 
-    const url = `${BASE_URL}${path}`;
+    const url = `${baseUrl}${path}`;
     log(`Browser challenge bootstrap fetching ${url}`);
     const startTime = Date.now();
 
     const page = await this.context.newPage();
     log(`Page opened for ${path}`);
     try {
+      await page.route('**/*', route => {
+        const request = route.request();
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()
+          && new URL(request.url()).origin !== new URL(baseUrl).origin) return route.abort();
+        return route.continue();
+      });
       await page.goto(url, { waitUntil: 'commit', timeout: 30_000 });
       log(`Initial navigation complete for ${path}`);
 
@@ -346,7 +457,10 @@ export class Fetcher {
           }
 
           const lowerTitle = title.toLowerCase();
-          if (!lowerTitle.includes('verifying') && !lowerTitle.startsWith('loading ')) {
+          if (lowerTitle.includes('oh noes!')) throw new Error(`Browser challenge rejected the request for ${url}`);
+          if (!lowerTitle.includes('verifying') && !lowerTitle.startsWith('loading ')
+            && !lowerTitle.includes('just a moment') && !lowerTitle.includes('security check')
+            && !lowerTitle.includes('making sure') && !lowerTitle.includes('checking your browser')) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             log(`[${path}] Browser challenge solved in ${elapsed}s`);
             return;
@@ -365,4 +479,5 @@ export class Fetcher {
   }
 }
 
-class SessionExpiredError extends Error {}
+class InstanceUnavailableError extends Error {}
+class SessionExpiredError extends InstanceUnavailableError {}

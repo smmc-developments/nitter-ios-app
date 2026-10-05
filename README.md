@@ -51,6 +51,18 @@ Vite proxies `/api` and `/health` to the local server. Run `npm run build` and `
 
 Each post has a **Share** button that copies its public Nitter link using the server's configured `NITTER_BASE_URL`, including for cached posts from a previous instance.
 
+### Automatic Nitter Instances
+
+To avoid manually switching instances, add this to `server/.env` and recreate the server container:
+
+```dotenv
+NITTER_AUTO_INSTANCE=true
+```
+
+The server discovers Nitter instances advertised by [xxcancel.com](https://xxcancel.com/), refreshes the list every 15 minutes, and tries up to three instances per request. Failed instances cool down for five minutes. `NITTER_BASE_URL` remains a fallback if discovery is unavailable; setting it to `https://xxcancel.com` also enables automatic mode, with `https://nitter.click` as the fallback.
+
+In automatic mode, Share copies stable `https://xxcancel.com/username/status/id` links. Timelines, images, and videos are fetched from the actual Nitter instances, with separate browser sessions and a restricted media allowlist. Availability still depends on xxcancel and the public instances; anti-bot challenges and rate limits can prevent access. Pagination cursors may not work across different instances.
+
 ## Server
 
 ### Production Deployment (Docker Compose)
@@ -172,6 +184,7 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `PROXY_SECRET` | *(required by release Compose)* | Stable HMAC signing key for media URLs |
 | `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
 | `NITTER_BASE_URL` | `https://nitter.click` | Nitter instance used for timelines and media |
+| `NITTER_AUTO_INSTANCE` | `false` | Discover instances through xxcancel and switch on failures; use `NITTER_BASE_URL` as fallback |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
 | `LOG_LEVEL` | `info` | Server output: `debug`, `info`, `warn`, `error`, or `silent` |
 | `LOG_BUFFER_SIZE` | `1000` | Recent log entries kept for `/api/logs` (Settings → Server Logs in the app) |

@@ -24,7 +24,7 @@ function setup() {
   const fetcher = {
     fetchPage: async (path: string) => {
       fetchedPaths.push(path);
-      return `
+      const html = `
         <div class="conversation">
           <div class="before-tweet">
             <div class="timeline-item" data-username="parentuser">
@@ -60,6 +60,7 @@ function setup() {
             </div>
           </div>
         </div>`;
+      return { html, baseUrl: 'https://upstream.example' };
     },
   } as unknown as Fetcher;
   const scheduler = { isRunning: false, run: async () => {} };
@@ -151,6 +152,22 @@ test('post links use the default Nitter instance when none is configured', async
     });
   } finally {
     process.env.NITTER_BASE_URL = configuredBaseUrl;
+  }
+});
+
+test('automatic mode emits stable xxcancel links regardless of the upstream host', async () => {
+  process.env.NITTER_AUTO_INSTANCE = 'true';
+  try {
+    const { app } = setup();
+    await withServer(app, async base => {
+      const response = await fetch(`${base}/api/tweet/nasa/1234567890`);
+      assert.equal(response.status, 200);
+      const body = await response.json() as { tweet: { statusURL: string }; replies: Array<{ statusURL: string }> };
+      assert.equal(body.tweet.statusURL, 'https://xxcancel.com/nasa/status/1234567890');
+      assert.equal(body.replies[0].statusURL, 'https://xxcancel.com/replyuser/status/1234567891');
+    });
+  } finally {
+    delete process.env.NITTER_AUTO_INSTANCE;
   }
 });
 

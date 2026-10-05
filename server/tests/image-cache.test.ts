@@ -15,20 +15,10 @@ test('stores an image on disk and reuses it without another upstream request', a
   let requests = 0;
   const body = Buffer.from('fake-image');
   const fetcher = {
-    getContext: () => ({
-      request: {
-        fetch: async () => {
-          requests++;
-          return {
-            status: () => 200,
-            ok: () => true,
-            headers: () => ({ 'content-type': 'image/jpeg', 'content-length': String(body.length) }),
-            body: async () => body,
-          };
-        },
-      },
-    }),
-    ensureSession: async () => {},
+    fetchImage: async () => {
+      requests++;
+      return new Response(body, { headers: { 'content-type': 'image/jpeg', 'content-length': String(body.length) } });
+    },
   } as unknown as Fetcher;
   const url = 'https://nitter.click/pic/media%2Fexample.jpg';
 
@@ -48,4 +38,18 @@ test('video allowlist accepts only the configured Nitter video path', () => {
   assert.equal(isAllowedImageUrl('https://nitter.click/pic/video.twimg.com%2Ftweet_video%2Fclip.mp4'), false);
   assert.equal(isAllowedVideoUrl('https://nitter.click/pic/poster.jpg'), false);
   assert.equal(isAllowedVideoUrl('https://example.com/video/clip.mp4'), false);
+});
+
+test('rejects oversized image streams without buffering the entire response', async () => {
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(10 * 1024 * 1024));
+      controller.enqueue(new Uint8Array(1));
+    },
+    cancel() { cancelled = true; },
+  });
+  const fetcher = { fetchImage: async () => new Response(stream, { headers: { 'content-type': 'image/jpeg' } }) } as unknown as Fetcher;
+  await assert.rejects(new ImageCache(fetcher).get('https://nitter.click/pic/oversized.jpg'), /Image is too large/);
+  assert.equal(cancelled, true);
 });

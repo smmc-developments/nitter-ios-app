@@ -9,6 +9,7 @@ import { parseConversation } from './parser.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
 import { createLogger, getLogs, LOG_LEVELS, type LogLevel } from './logger.js';
+import { shareBaseUrl } from './instances.js';
 
 interface FetchScheduler {
   readonly isRunning: boolean;
@@ -24,7 +25,9 @@ export function createRouter(
   proxySecret: string,
 ) {
 const router = Router();
-const nitterBaseUrl = (process.env.NITTER_BASE_URL || 'https://nitter.click').replace(/\/+$/, '');
+const nitterBaseUrl = shareBaseUrl();
+const allowedImage = (url: string) => isAllowedImageUrl(url, fetcher.nitterBaseUrls);
+const allowedVideo = (url: string) => isAllowedVideoUrl(url, fetcher.nitterBaseUrls);
 
 router.post('/fetch', (_req, res) => {
   if (scheduler.isRunning) {
@@ -108,8 +111,8 @@ router.get('/tweet/:username/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid username or tweet ID' });
   }
   try {
-    const html = await fetcher.fetchPage(`/${username}/status/${tweetId}`);
-    const { tweet: mainTweet, replies } = parseConversation(html, username, tweetId);
+    const { html, baseUrl: instanceUrl } = await fetcher.fetchPage(`/${username}/status/${tweetId}`);
+    const { tweet: mainTweet, replies } = parseConversation(html, username, tweetId, instanceUrl);
     log(`GET /tweet/${username}/${tweetId} — main: ${mainTweet ? 'found' : 'missing'}, replies: ${replies.length}`);
     const baseUrl = `${req.protocol}://${req.get('host')}`;
     res.json({
@@ -149,12 +152,12 @@ router.get('/proxy', async (req, res) => {
     log('GET /proxy — rejected invalid or expired signature');
     return res.status(403).json({ error: 'Invalid or expired image URL' });
   }
-  if (!isAllowedImageUrl(url) && !isAllowedVideoUrl(url)) {
+  if (!allowedImage(url) && !allowedVideo(url)) {
     log(`GET /proxy — rejected upstream URL ${url.slice(0, 160)}`);
     return res.status(400).json({ error: 'Missing or invalid url param' });
   }
   try {
-    if (isAllowedVideoUrl(url)) {
+    if (allowedVideo(url)) {
       const abort = new AbortController();
       req.on('aborted', () => abort.abort());
       res.on('close', () => {
@@ -165,7 +168,7 @@ router.get('/proxy', async (req, res) => {
       const ifRange = req.headers['if-range'];
       if (ifRange) requestHeaders['if-range'] = Array.isArray(ifRange) ? ifRange[0] : ifRange;
       const method = req.method === 'HEAD' ? 'HEAD' : 'GET';
-      const upstream = await fetcher.fetchMedia(url, requestHeaders, abort.signal, method, isAllowedVideoUrl);
+      const upstream = await fetcher.fetchMedia(url, requestHeaders, abort.signal, method, allowedVideo);
       // Redirect hops are re-validated inside fetchMedia; here make sure the
       // final response is actually a video so attacker-controlled HTML/JS is
       // never served from this origin.

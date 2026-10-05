@@ -47,13 +47,13 @@ test.after(() => {
 function createFetcher(): Fetcher {
   const fetcher = new Fetcher() as unknown as {
     ready: boolean;
-    sessionReady: boolean;
+    sessions: Set<string>;
     context: unknown;
     userAgent: string;
     fetchMedia: Fetcher['fetchMedia'];
   };
   fetcher.ready = true;
-  fetcher.sessionReady = true;
+  fetcher.sessions.add(originUrl);
   fetcher.context = { cookies: async () => [{ name: 'session', value: 'sekrit' }] };
   fetcher.userAgent = 'redirect-test';
   return fetcher as unknown as Fetcher;
