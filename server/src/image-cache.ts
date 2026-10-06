@@ -5,6 +5,7 @@ import type { Fetcher } from './fetcher.js';
 import { DATA_DIR } from './paths.js';
 import { createLogger } from './logger.js';
 import { configuredBaseUrl } from './instances.js';
+import { MediaNotFoundError } from './media-errors.js';
 
 const log = createLogger('image-cache');
 
@@ -14,6 +15,7 @@ const MAX_CACHE_BYTES = 512 * 1024 * 1024;
 const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const PREFETCH_CONCURRENCY = 4;
 const MAX_QUEUED_IMAGES = 2_000;
+const MISSING_IMAGE_TTL_MS = 5 * 60_000;
 
 export interface CachedImage {
   body: Buffer;
@@ -26,8 +28,9 @@ export class ImageCache {
   private queued = new Set<string>();
   private queue: string[] = [];
   private workers = 0;
+  private missing = new Map<string, { error: MediaNotFoundError; expires: number }>();
 
-  constructor(fetcher: Fetcher) {
+  constructor(fetcher: Fetcher, private now = Date.now) {
     this.fetcher = fetcher;
     void mkdir(CACHE_DIR, { recursive: true }).then(() => this.pruneExpired());
   }
@@ -35,7 +38,7 @@ export class ImageCache {
   prefetch(urls: Array<string | null | undefined>) {
     for (const url of new Set(urls.filter((value): value is string => Boolean(value)))) {
       if (this.queue.length >= MAX_QUEUED_IMAGES) break;
-      if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls) || this.queued.has(url) || this.inFlight.has(url)) continue;
+      if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls) || this.queued.has(url) || this.inFlight.has(url) || this.missingImage(url)) continue;
       this.queued.add(url);
       this.queue.push(url);
     }
@@ -46,6 +49,8 @@ export class ImageCache {
     if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls)) throw new Error('Image URL is not allowed');
     const cached = await this.read(url);
     if (cached) return cached;
+    const missing = this.missingImage(url);
+    if (missing) throw missing;
 
     const existing = this.inFlight.get(url);
     if (existing) return existing;
@@ -54,10 +59,26 @@ export class ImageCache {
     this.inFlight.set(url, request);
     try {
       return await request;
+    } catch (error) {
+      if (error instanceof MediaNotFoundError) {
+        // Bound the negative cache and retry missing resources after a short
+        // interval rather than keeping them unavailable indefinitely.
+        this.missing.delete(url);
+        if (this.missing.size >= MAX_QUEUED_IMAGES) this.missing.delete(this.missing.keys().next().value!);
+        this.missing.set(url, { error, expires: this.now() + MISSING_IMAGE_TTL_MS });
+      }
+      throw error;
     } finally {
       this.inFlight.delete(url);
       this.queued.delete(url);
     }
+  }
+
+  private missingImage(url: string): MediaNotFoundError | undefined {
+    const cached = this.missing.get(url);
+    if (!cached) return;
+    if (cached.expires > this.now()) return cached.error;
+    this.missing.delete(url);
   }
 
   private startWorkers() {
@@ -75,7 +96,8 @@ export class ImageCache {
         try {
           await this.get(url);
         } catch (err) {
-          log.error(`Prefetch failed: ${String(err)}`);
+          if (err instanceof MediaNotFoundError) log.debug(`Prefetch skipped: ${String(err)}`);
+          else log.error(`Prefetch failed for ${url}: ${String(err)}`);
         } finally {
           this.queued.delete(url);
         }
@@ -91,6 +113,7 @@ export class ImageCache {
     try {
       const contentType = response.headers.get('content-type') || '';
       const contentLength = Number(response.headers.get('content-length') || 0);
+      if (response.status === 404 || response.status === 410) throw new MediaNotFoundError(response.status, url);
       if (!response.ok) throw new Error(`Image host returned ${response.status}`);
       if (!contentType.toLowerCase().startsWith('image/')) throw new Error('Upstream response is not an image');
       if (contentLength > MAX_IMAGE_BYTES) throw new Error('Image is too large');

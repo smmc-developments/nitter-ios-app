@@ -3,7 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 import type { Fetcher } from '../src/fetcher.js';
+import { MediaNotFoundError } from '../src/media-errors.js';
+import { getLogs } from '../src/logger.js';
 
 const dataDir = mkdtempSync(join(tmpdir(), 'nitter-images-'));
 process.env.DATA_DIR = dataDir;
@@ -52,4 +55,51 @@ test('rejects oversized image streams without buffering the entire response', as
   const fetcher = { fetchImage: async () => new Response(stream, { headers: { 'content-type': 'image/jpeg' } }) } as unknown as Fetcher;
   await assert.rejects(new ImageCache(fetcher).get('https://nitter.click/pic/oversized.jpg'), /Image is too large/);
   assert.equal(cancelled, true);
+});
+
+test('missing images are briefly cached, skipped during prefetch, and retried after expiry', async () => {
+  let now = 0;
+  let requests = 0;
+  let available = false;
+  const url = 'https://nitter.click/pic/missing-then-restored.jpg';
+  const fetcher = { fetchImage: async () => {
+    requests++;
+    if (!available) throw new MediaNotFoundError(404, url);
+    return new Response('restored-image', { headers: { 'content-type': 'image/jpeg' } });
+  } } as unknown as Fetcher;
+  const cache = new ImageCache(fetcher, () => now);
+  const results = await Promise.allSettled([cache.get(url), cache.get(url)]);
+  assert.ok(results.every(result => result.status === 'rejected' && result.reason instanceof MediaNotFoundError));
+  assert.equal(requests, 1);
+  await assert.rejects(cache.get(url), MediaNotFoundError);
+  cache.prefetch([url]);
+  assert.equal(requests, 1);
+
+  available = true;
+  now += 5 * 60_000;
+  assert.equal((await cache.get(url)).body.toString(), 'restored-image');
+  assert.equal(requests, 2);
+  assert.equal((await cache.get(url)).body.toString(), 'restored-image');
+  assert.equal(requests, 2);
+});
+
+test('missing-image prefetch does not log an error', async t => {
+  const watermark = getLogs().latest;
+  const url = 'https://nitter.click/pic/prefetch-missing.jpg';
+  const cache = new ImageCache({} as Fetcher);
+  const get = t.mock.method(cache, 'get', async () => { throw new MediaNotFoundError(404, url); });
+  cache.prefetch([url]);
+  await setImmediate();
+  assert.equal(get.mock.callCount(), 1);
+  assert.equal(getLogs({ after: watermark, minLevel: 'error' }).entries.some(entry => entry.scope === 'image-cache'), false);
+});
+
+test('genuine prefetch failures remain visible and include the affected URL', async t => {
+  const watermark = getLogs().latest;
+  const url = 'https://nitter.click/pic/prefetch-failed.jpg';
+  const cache = new ImageCache({} as Fetcher);
+  t.mock.method(cache, 'get', async () => { throw new Error('Upstream image request returned HTTP 503'); });
+  cache.prefetch([url]);
+  await setImmediate();
+  assert.equal(getLogs({ after: watermark, minLevel: 'error' }).entries.some(entry => entry.scope === 'image-cache' && entry.message.includes('HTTP 503') && entry.message.includes(url)), true);
 });

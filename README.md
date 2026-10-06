@@ -239,6 +239,8 @@ The server proxies Nitter media through the browser context with signed HMAC URL
 
 Video content is proxied with HTTP range support for seeking, and played natively via AVPlayer.
 
+Missing media returns HTTP 404/410 without marking its Nitter instance as unhealthy. Missing images are cached for five minutes to avoid repeated prefetch attempts. Expected client cancellations and missing-media prefetch messages are debug-only; genuine upstream failures remain visible in the logs.
+
 ## CI/CD
 
 Pull requests into `main` run the GitHub Actions CI workflow:

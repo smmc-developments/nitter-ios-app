@@ -10,6 +10,7 @@ import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
 import { createLogger, getLogs, LOG_LEVELS, type LogLevel } from './logger.js';
 import { shareBaseUrl } from './instances.js';
+import { MediaNotFoundError } from './media-errors.js';
 
 interface FetchScheduler {
   readonly isRunning: boolean;
@@ -204,8 +205,28 @@ router.get('/proxy', async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.status(200).send(image.body);
   } catch (err: any) {
+    const disconnected = req.aborted || res.destroyed;
+    const cancelled = err?.name === 'AbortError' || err?.code === 'ABORT_ERR';
+    if (disconnected && cancelled) {
+      // Browsers abandon media requests when scrolling, seeking, or leaving
+      // the page. Aborting their upstream fetch is expected, not a failure.
+      log.debug('GET /proxy cancelled — client disconnected');
+      return;
+    }
+    if (err instanceof MediaNotFoundError) {
+      log.debug(`GET /proxy — media unavailable: ${err.message}`);
+      if (disconnected) return;
+      if (res.headersSent) { res.destroy(); return; }
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(err.status).json({ error: 'Media not found' });
+      return;
+    }
     const msg = err?.message ?? String(err);
     log.error(`GET /proxy FAILED: ${msg}`);
+    // Never try to send an error response to a closed socket or overwrite
+    // headers from a response that has already started streaming.
+    if (disconnected) return;
+    if (res.headersSent) { res.destroy(); return; }
     res.status(502).json({ error: msg });
   }
 });

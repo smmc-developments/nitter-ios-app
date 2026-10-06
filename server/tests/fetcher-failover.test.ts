@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Fetcher } from '../src/fetcher.js';
 import { NitterInstances } from '../src/instances.js';
 import { isAllowedImageUrl, isAllowedVideoUrl } from '../src/image-cache.js';
+import { MediaNotFoundError } from '../src/media-errors.js';
 
 const first = 'https://first.example';
 const second = 'https://second.example';
@@ -149,6 +150,32 @@ test('image requests fail over, use origin-specific cookies, and reject unknown 
   assert.equal(requested.length, 2);
   assert.equal(isAllowedImageUrl(first + '/pic/image.jpg', fetcher.nitterBaseUrls), true);
   assert.equal(isAllowedImageUrl('https://unknown.example/pic/image.jpg', fetcher.nitterBaseUrls), false);
+});
+
+for (const status of [404, 410] as const) {
+  test(`missing images (HTTP ${status}) do not retry other hosts or cool down a healthy instance`, async t => {
+    const { fetcher, instances } = setup(async () => apiResponse());
+    await instances.select();
+    const request = t.mock.method(globalThis, 'fetch', async () => new Response('Missing', { status, headers: { 'content-type': 'text/html;charset=utf-8' } }));
+    const url = first + `/pic/missing-${status}.jpg`;
+    await assert.rejects(fetcher.fetchImage(url), error => {
+      assert.ok(error instanceof MediaNotFoundError);
+      assert.equal(error.status, status);
+      assert.equal(error.url, url);
+      return true;
+    });
+    assert.equal(request.mock.callCount(), 1);
+    assert.equal(await instances.select(), first);
+  });
+}
+
+test('missing video resources do not cool down a healthy instance', async t => {
+  const { fetcher, instances } = setup(async () => apiResponse());
+  await instances.select();
+  const request = t.mock.method(globalThis, 'fetch', async () => new Response('Missing', { status: 404, headers: { 'content-type': 'text/html' } }));
+  await assert.rejects(fetcher.fetchMedia(first + '/video/missing.mp4', {}, new AbortController().signal, 'GET', url => isAllowedVideoUrl(url, fetcher.nitterBaseUrls)), MediaNotFoundError);
+  assert.equal(request.mock.callCount(), 1);
+  assert.equal(await instances.select(), first);
 });
 
 test('video failover preserves range headers and never leaks session cookies to the Twitter CDN', async t => {

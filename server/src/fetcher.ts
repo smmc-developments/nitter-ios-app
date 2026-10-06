@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { createLogger } from './logger.js';
 import { NitterInstances } from './instances.js';
 import { isAllowedImageUrl } from './image-cache.js';
+import { MediaNotFoundError } from './media-errors.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
 const MAX_MEDIA_REDIRECTS = 5;
@@ -321,6 +322,10 @@ export class Fetcher {
           }
           break;
         }
+        if (response!.status === 404 || response!.status === 410) {
+          await response!.body?.cancel();
+          throw new MediaNotFoundError(response!.status, target);
+        }
         const contentType = response!.headers.get('content-type')?.toLowerCase() ?? '';
         const validStatus = response!.ok || (kind === 'video' && response!.status === 416);
         if (!validStatus || (!contentType.startsWith(`${kind}/`)
@@ -330,6 +335,7 @@ export class Fetcher {
         }
         return response!;
       } catch (error) {
+        if (error instanceof MediaNotFoundError) throw error;
         if (!canSwitch || signal.aborted) throw error;
         lastError = error;
         this.instances.failed(baseUrl!, error);
