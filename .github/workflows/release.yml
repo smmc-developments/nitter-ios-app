@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      recover_tag:
+        description: 'Existing latest stable tag to recover or republish (e.g. v1.9.1)'
+        type: string
+        required: true
 
 concurrency:
   group: release-main
@@ -25,6 +31,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.recover_tag || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -52,16 +60,21 @@ jobs:
     outputs:
       published: ${{ steps.semantic.outputs.published }}
       version: ${{ steps.semantic.outputs.version }}
+      sha: ${{ steps.semantic.outputs.sha }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Test release recovery
+        run: node --test scripts/release.test.mjs
 
       - name: Install release tooling
         run: >-
@@ -70,13 +83,13 @@ jobs:
           @semantic-release/commit-analyzer@13
           @semantic-release/release-notes-generator@14
           @semantic-release/github@11
-          @semantic-release/exec@7
 
       - name: Create release
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+          RECOVER_TAG: ${{ inputs.recover_tag }}
+        run: node scripts/release.mjs
 
   docker:
     name: Publish Docker image
@@ -86,6 +99,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3

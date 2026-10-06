@@ -267,6 +267,10 @@ docker pull ghcr.io/smmc-developments/nitter-ios-app:latest
 
 Images are tagged with the full version, minor version, major version, and `latest`, for example `1.2.3`, `1.2`, `1`, and `latest`.
 
+If GitHub rejects semantic-release's Git-notes metadata after the version tag is pushed, the workflow recovers the GitHub release from that existing tag. Other release errors still fail the job. Rerunning a tagged release also retries Docker publication, and Docker always builds the exact release commit.
+
+To recover a partial release or failed Docker publication after `main` has moved on, run the **Release** workflow manually on `main` with `recover_tag` set to the existing version tag (for example, `v1.9.1`). Recovery never deletes or moves tags, preserves existing published release notes, and only accepts the latest stable tag on `main` to prevent rolling back the `latest`, major, or minor image tags.
+
 ## License
 
 Licensed under the [MIT License](LICENSE).
