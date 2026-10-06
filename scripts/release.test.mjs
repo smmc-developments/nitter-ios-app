@@ -105,16 +105,16 @@ test('automatic recovery must match HEAD; explicit recovery can target an earlie
   assert.equal(releaseTarget(cwd, tag).sha, sha);
 });
 
-test('missing GitHub releases are created with notes for the verified tag and commit', async () => {
+test('missing GitHub releases use the verified existing tag without a redundant historical target SHA', async () => {
   const { api, calls } = apiFixture();
   await ensureGithubRelease({ tag, sha: 'release-sha', previousTag: 'v1.9.0' }, api);
   assert.deepEqual(calls, [
     { method: 'GET', endpoint: `/releases/tags/${tag}`, body: undefined },
     { method: 'POST', endpoint: '/releases/generate-notes', body: {
-      tag_name: tag, target_commitish: 'release-sha', previous_tag_name: 'v1.9.0',
+      tag_name: tag, previous_tag_name: 'v1.9.0',
     } },
     { method: 'POST', endpoint: '/releases', body: {
-      tag_name: tag, target_commitish: 'release-sha', name: tag, body: 'Recovered release notes',
+      tag_name: tag, name: tag, body: 'Recovered release notes',
       draft: false, prerelease: false, make_latest: 'true',
     } },
   ]);
@@ -158,6 +158,14 @@ test('unrelated semantic-release errors remain failures even when a tag exists',
   assert.equal(calls.length, 0);
 });
 
+test('a tag moved during release creation cannot authorize Docker publication', async t => {
+  const { cwd, git } = repository(t);
+  await assert.rejects(publishRelease({ cwd, recoverTag: tag, api: async () => {
+    git('push', '--force', 'origin', `refs/tags/v1.9.0:refs/tags/${tag}`);
+    return published;
+  } }), /does not match/);
+});
+
 test('rerunning a tagged commit recovers a missing release and retries existing Docker publications', async t => {
   const { cwd, sha } = repository(t);
   for (const existing of [null, published]) {
@@ -193,6 +201,9 @@ test('the GitHub client distinguishes missing releases from authentication and s
   const missing = githubApi({ repository: 'owner/repo', token: 'test-token', fetchImpl: async () => new Response('', { status: 404 }) });
   assert.equal(await missing('GET', `/releases/tags/${tag}`), null);
   await assert.rejects(missing('POST', '/releases'), /HTTP 404/);
+  const denied = githubApi({ repository: 'owner/repo', token: 'test-token', fetchImpl: async () =>
+    Response.json({ message: 'Resource not accessible by integration' }, { status: 403 }) });
+  await assert.rejects(denied('POST', '/releases'), /HTTP 403 — Resource not accessible by integration/);
 });
 
 test('the GitHub client sends authenticated JSON requests with a timeout', async () => {

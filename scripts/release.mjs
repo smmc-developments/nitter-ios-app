@@ -58,7 +58,11 @@ export function githubApi({ repository, token, apiUrl = 'https://api.github.com'
       signal: AbortSignal.timeout(30_000),
     });
     if (method === 'GET' && response.status === 404) return null;
-    if (!response.ok) throw new Error(`GitHub ${method} ${endpoint} failed: HTTP ${response.status}`);
+    if (!response.ok) {
+      const details = await response.json().catch(() => null);
+      const message = typeof details?.message === 'string' ? ` — ${details.message}` : '';
+      throw new Error(`GitHub ${method} ${endpoint} failed: HTTP ${response.status}${message}`);
+    }
     return response.json();
   };
 }
@@ -70,12 +74,12 @@ export async function ensureGithubRelease(target, api) {
     // failed Git-notes transport. Never remove or retarget an existing tag.
     const notes = await api('POST', '/releases/generate-notes', {
       tag_name: target.tag,
-      target_commitish: target.sha,
       ...(target.previousTag ? { previous_tag_name: target.previousTag } : {}),
     });
+    // target_commitish is unused for an existing tag, but supplying an old SHA
+    // can still trigger GitHub's workflows-write check. Use the verified tag.
     release = await api('POST', '/releases', {
       tag_name: target.tag,
-      target_commitish: target.sha,
       name: target.tag,
       body: notes.body,
       draft: false,
@@ -112,6 +116,9 @@ export async function publishRelease({ cwd = process.cwd(), recoverTag, runSeman
     }
   }
   await ensureGithubRelease(target, api);
+  // Recheck after the API calls so a deleted/moved tag or newer release cannot
+  // silently cause the image aliases to point at the wrong code.
+  releaseTarget(cwd, target.tag);
   log(`Docker publication ready: ${target.tag} at ${target.sha}`);
   return { published: true, version: target.version, sha: target.sha };
 }
