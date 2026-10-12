@@ -4,6 +4,7 @@ import { Fetcher } from '../src/fetcher.js';
 import { NitterInstances } from '../src/instances.js';
 import { isAllowedImageUrl, isAllowedVideoUrl } from '../src/image-cache.js';
 import { MediaNotFoundError } from '../src/media-errors.js';
+import { getLogs } from '../src/logger.js';
 
 const first = 'https://first.example';
 const second = 'https://second.example';
@@ -51,6 +52,57 @@ test('network failures and incomplete HTML trigger failover', async () => {
     return url.startsWith(second) ? apiResponse(200, '<html>Unavailable</html>') : apiResponse();
   });
   assert.deepEqual(await fetcher.fetchPage('/nasa'), { html, baseUrl: third });
+});
+
+function timeoutError(url: string): Error {
+  const error = new Error(`apiRequestContext.fetch: Timeout 30000ms exceeded.\nCall log:\n  - → GET ${url}\n  - cookie: session=secret-cookie\n  - authorization: Bearer secret-token`);
+  error.name = 'TimeoutError';
+  return error;
+}
+
+test('Playwright timeouts fail over and later accounts skip the timed-out instance', async () => {
+  const watermark = getLogs().latest;
+  const requested: string[] = [];
+  const { fetcher } = setup(async url => {
+    requested.push(url);
+    if (url.startsWith(first)) throw timeoutError(url);
+    return apiResponse();
+  });
+  assert.equal((await fetcher.fetchPage('/alice/with_replies')).baseUrl, second);
+  assert.equal((await fetcher.fetchPage('/bob/with_replies')).baseUrl, second);
+  assert.deepEqual(requested, [first + '/alice/with_replies', second + '/alice/with_replies', second + '/bob/with_replies']);
+  const logs = getLogs({ after: watermark }).entries;
+  assert.ok(logs.some(entry => entry.message.includes('Timeout 30000ms exceeded')));
+  assert.ok(logs.every(entry => !entry.message.includes('Call log:') && !entry.message.includes('secret-')));
+});
+
+test('timeouts on all instances report the attempted hosts without exposing headers', async () => {
+  let calls = 0;
+  const { fetcher } = setup(async url => { calls++; throw timeoutError(url); });
+  await assert.rejects(fetcher.fetchPage('/alice/with_replies'), error => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.message.includes('after trying 3 instance(s)'));
+    for (const host of [first, second, third]) assert.ok(error.message.includes(host));
+    assert.ok(error.message.includes('Timeout 30000ms exceeded'));
+    assert.ok(!error.message.includes('Call log:'));
+    assert.ok(!error.message.includes('secret-'));
+    return true;
+  });
+  assert.equal(calls, 3);
+});
+
+test('direct-mode timeouts explain that failover is disabled and never disclose request cookies', async () => {
+  let calls = 0;
+  const { fetcher } = setup(async url => { calls++; throw timeoutError(url); }, false);
+  await assert.rejects(fetcher.fetchPage('/alice/with_replies'), error => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.message.includes('NITTER_AUTO_INSTANCE=false'));
+    assert.ok(error.message.includes('Timeout 30000ms exceeded'));
+    assert.ok(!error.message.includes('Call log:'));
+    assert.ok(!error.message.includes('secret-'));
+    return true;
+  });
+  assert.equal(calls, 1);
 });
 
 test('expired sessions refresh on the same host before switching', async () => {

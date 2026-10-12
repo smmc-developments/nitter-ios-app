@@ -8,7 +8,7 @@ import {
 } from './db.js';
 import { cursorPath, hasTimelineOverlap, selectAccountsForCycle } from './scheduling.js';
 import type { ImageCache } from './image-cache.js';
-import { createLogger } from './logger.js';
+import { createLogger, errorMessage } from './logger.js';
 
 const CONCURRENCY = parsePositiveInt(process.env.FETCH_CONCURRENCY, 2);
 const REQUEST_START_INTERVAL_MS = parsePositiveInt(process.env.FETCH_START_INTERVAL_MS, 1_000);
@@ -139,7 +139,7 @@ export class Scheduler {
         log(`@${account.username}: ${parsed} tweet(s) across ${page} page(s)`);
         return { parsed, inserted: parsed };
       } catch (err: any) {
-        const msg = err?.message ?? String(err);
+        const msg = errorMessage(err);
         log.error(`@${account.username} FAILED: ${msg}`);
         updateAccountFetch(account.username, { error: msg });
         return { parsed: 0, inserted: 0 };
@@ -163,7 +163,7 @@ export class Scheduler {
       try {
         return await this.fetcher.fetchPage(path);
       } catch (err: any) {
-        const msg = err?.message ?? String(err);
+        const msg = errorMessage(err);
         const rateLimited = msg.includes('429') || msg.toLowerCase().includes('rate');
         if (!rateLimited || attempt === 3) throw err;
         const delay = 30_000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 5_000);

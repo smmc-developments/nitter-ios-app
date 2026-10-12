@@ -1,6 +1,24 @@
 export const LOG_LEVELS = ['debug', 'info', 'warn', 'error', 'silent'] as const;
 export type LogLevel = typeof LOG_LEVELS[number];
 
+// Playwright appends a request dump to errors, including authentication cookies.
+// Keep the useful failure reason, never the dump, in console or client logs.
+export function sanitizeLogMessage(message: string): string {
+  const safe = message
+    .split(/(?:\r?\n|^)\s*Call log:\s*(?:\r?\n|$)/i)[0]
+    .replace(/(["'](?:cookie|set-cookie|authorization|proxy-authorization|x-api-key)["']\s*:\s*)(["'])[\s\S]*?\2/gi, '$1$2[REDACTED]$2')
+    .replace(/(\b(?:cookie|set-cookie|authorization|proxy-authorization|x-api-key)\s*:\s*)[^\r\n]*/gi, '$1[REDACTED]')
+    .replace(/[\r\n\u2028\u2029]+/g, ' ')
+    .trim();
+  return safe.length > 2_048 ? `${safe.slice(0, 2_048)}…` : safe;
+}
+
+export function errorMessage(error: unknown): string {
+  const message = error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+    ? error.message : String(error);
+  return sanitizeLogMessage(message);
+}
+
 const priorities: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
@@ -65,6 +83,7 @@ export function getLogs(options: { limit?: number; after?: number; minLevel?: Lo
 export function createLogger(scope: string, defaultLevel: Exclude<LogLevel, 'silent'> = 'info'): Logger {
   const write = (level: Exclude<LogLevel, 'silent'>, message: string) => {
     if (!isLogLevelEnabled(level, configuredLevel)) return;
+    message = sanitizeLogMessage(message);
     const ts = new Date().toISOString();
     const line = `[${ts}] [${scope}] [${level}] ${message}`;
     buffer.push({ id: nextLogId++, ts, level, scope, message });

@@ -1,7 +1,7 @@
 import { chromium, type BrowserContext } from 'playwright';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { existsSync } from 'fs';
-import { createLogger } from './logger.js';
+import { createLogger, errorMessage } from './logger.js';
 import { NitterInstances } from './instances.js';
 import { isAllowedImageUrl } from './image-cache.js';
 import { MediaNotFoundError } from './media-errors.js';
@@ -83,6 +83,9 @@ export class Fetcher {
 
   async start() {
     log('initializing...');
+    log(this.instances.automatic
+      ? 'Nitter instance mode: automatic — xxcancel discovery and timeout failover enabled'
+      : 'Nitter instance mode: direct — failover disabled; set NITTER_AUTO_INSTANCE=true to enable it');
     const chromePath = findChromePath();
     const needsXvfb = !hasDisplay() && hasXvfbRun();
     log(`Platform: ${process.platform}, needsXvfb: ${needsXvfb}`);
@@ -220,7 +223,7 @@ export class Fetcher {
     if (existing) return existing;
 
     const promise = this.solveChallenge(path, baseUrl).catch(error => {
-      throw new InstanceUnavailableError(`Session bootstrap failed for ${baseUrl}: ${String(error)}`);
+      throw new InstanceUnavailableError(`Session bootstrap failed for ${baseUrl}: ${errorMessage(error)}`);
     });
     this.sessionPromises.set(baseUrl, promise);
     try {
@@ -238,7 +241,7 @@ export class Fetcher {
     let lastError: unknown;
     for (let attempt = 0; attempt < (this.instances.automatic ? 3 : 1); attempt++) {
       let baseUrl: string;
-      try { baseUrl = await this.instances.select(tried); } catch (error) { throw lastError ?? error; }
+      try { baseUrl = await this.instances.select(tried); } catch (error) { throw this.pageFailure(lastError ?? error, tried); }
       tried.add(baseUrl);
       try {
         await this.ensureSession(false, baseUrl);
@@ -260,7 +263,15 @@ export class Fetcher {
         this.instances.failed(baseUrl, error);
       }
     }
-    throw lastError;
+    throw this.pageFailure(lastError, tried);
+  }
+
+  private pageFailure(error: unknown, tried: Set<string>): Error {
+    const attempted = [...tried].join(', ') || 'none available';
+    const context = this.instances.automatic
+      ? `Nitter request failed after trying ${tried.size} instance(s) (${attempted})`
+      : `Nitter request failed in direct mode (${attempted}); automatic failover is disabled (NITTER_AUTO_INSTANCE=false)`;
+    return new InstanceUnavailableError(`${context}: ${errorMessage(error)}`);
   }
 
   async fetchImage(url: string): Promise<Response> {
@@ -402,7 +413,7 @@ export class Fetcher {
       });
       try { html = await response.text(); } finally { await response.dispose(); }
     } catch (error) {
-      throw new InstanceUnavailableError(`Request failed for ${url}: ${String(error)}`);
+      throw new InstanceUnavailableError(`Request failed for ${url}: ${errorMessage(error)}`);
     }
     const lower = html.toLowerCase();
 

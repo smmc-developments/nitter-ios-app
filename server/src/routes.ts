@@ -8,7 +8,7 @@ import {
 import { parseConversation } from './parser.js';
 import type { Fetcher } from './fetcher.js';
 import { isAllowedImageUrl, isAllowedVideoUrl, type ImageCache } from './image-cache.js';
-import { createLogger, getLogs, LOG_LEVELS, type LogLevel } from './logger.js';
+import { createLogger, errorMessage, getLogs, LOG_LEVELS, type LogLevel } from './logger.js';
 import { shareBaseUrl } from './instances.js';
 import { MediaNotFoundError } from './media-errors.js';
 
@@ -46,6 +46,7 @@ router.get('/accounts', (req, res) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   res.json(accounts.map(a => ({
     ...a,
+    fetch_error: a.fetch_error ? errorMessage(a.fetch_error) : null,
     avatar_url: a.avatar_url ? proxyUrl(baseUrl, a.avatar_url, proxySecret) : null,
   })));
 });
@@ -121,7 +122,7 @@ router.get('/tweet/:username/:id', async (req, res) => {
       replies: replies.map(reply => formatTweet(reply, baseUrl)),
     });
   } catch (err: any) {
-    const msg = err?.message ?? String(err);
+    const msg = errorMessage(err);
     log.error(`GET /tweet/${username}/${tweetId} FAILED: ${msg}`);
     res.status(502).json({ error: msg });
   }
@@ -221,7 +222,7 @@ router.get('/proxy', async (req, res) => {
       res.status(err.status).json({ error: 'Media not found' });
       return;
     }
-    const msg = err?.message ?? String(err);
+    const msg = errorMessage(err);
     log.error(`GET /proxy FAILED: ${msg}`);
     // Never try to send an error response to a closed socket or overwrite
     // headers from a response that has already started streaming.

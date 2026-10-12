@@ -63,6 +63,16 @@ The server discovers Nitter instances advertised by [xxcancel.com](https://xxcan
 
 In automatic mode, Share copies stable `https://xxcancel.com/username/status/id` links. Timelines, images, and videos are fetched from the actual Nitter instances, with separate browser sessions and a restricted media allowlist. Availability still depends on xxcancel and the public instances; anti-bot challenges and rate limits can prevent access. Pagination cursors may not work across different instances.
 
+Startup logs identify **direct** or **automatic** instance mode. Timeline timeouts trigger failover only in automatic mode; direct-mode errors explain that failover is disabled, while exhausted automatic requests list the attempted instances. Playwright request dumps and authentication headers are excluded from logs and client error messages.
+
+To confirm the setting in a deployed container, run this from `server/`:
+
+```bash
+docker compose -f docker-compose.release.yml exec nitter printenv NITTER_AUTO_INSTANCE
+```
+
+If it prints `false`, set `NITTER_AUTO_INSTANCE=true` in `server/.env` and run `docker compose -f docker-compose.release.yml up -d --force-recreate` from `server/`. Editing `.env` or restarting the same container alone does not update its environment.
+
 ## Server
 
 ### Production Deployment (Docker Compose)
