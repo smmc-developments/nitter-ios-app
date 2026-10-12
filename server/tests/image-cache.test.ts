@@ -32,6 +32,33 @@ test('stores an image on disk and reuses it without another upstream request', a
   assert.equal(requests, 1);
 });
 
+test('image requests wait for cache initialization and startup pruning to finish', async t => {
+  let started!: () => void;
+  let finish!: () => void;
+  const initializationStarted = new Promise<void>(resolve => { started = resolve; });
+  const gate = new Promise<void>(resolve => { finish = resolve; });
+  let requests = 0;
+  const fetcher = { fetchImage: async () => {
+    requests++;
+    return new Response('ready-image', { headers: { 'content-type': 'image/jpeg' } });
+  } } as unknown as Fetcher;
+  const cache = new ImageCache(fetcher);
+  const state = cache as unknown as { pruneExpired(): Promise<void>; read(url: string): Promise<null> };
+  t.mock.method(state, 'pruneExpired', async () => { started(); await gate; });
+  t.mock.method(state, 'read', async () => null);
+  const image = cache.get('https://nitter.click/pic/initialization.jpg');
+  try {
+    await initializationStarted;
+    assert.equal(requests, 0);
+  } finally {
+    finish();
+    await image;
+    await cache.ready;
+  }
+  assert.equal((await image).body.toString(), 'ready-image');
+  assert.equal(requests, 1);
+});
+
 test('video allowlist accepts only the configured Nitter video path', () => {
   assert.equal(isAllowedVideoUrl('https://nitter.click/video/vid.twimg.com%2Fclip.mp4'), true);
   assert.equal(isAllowedVideoUrl('https://nitter.click/pic/video.twimg.com%2Ftweet_video%2Fclip.mp4'), true);
@@ -87,6 +114,7 @@ test('missing-image prefetch does not log an error', async t => {
   const watermark = getLogs().latest;
   const url = 'https://nitter.click/pic/prefetch-missing.jpg';
   const cache = new ImageCache({} as Fetcher);
+  await cache.ready; // The mocked get() bypasses its normal initialization wait.
   const get = t.mock.method(cache, 'get', async () => { throw new MediaNotFoundError(404, url); });
   cache.prefetch([url]);
   await setImmediate();
@@ -98,6 +126,7 @@ test('genuine prefetch failures remain visible and include the affected URL', as
   const watermark = getLogs().latest;
   const url = 'https://nitter.click/pic/prefetch-failed.jpg';
   const cache = new ImageCache({} as Fetcher);
+  await cache.ready;
   t.mock.method(cache, 'get', async () => { throw new Error('Upstream image request returned HTTP 503'); });
   cache.prefetch([url]);
   await setImmediate();

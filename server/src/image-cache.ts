@@ -23,6 +23,7 @@ export interface CachedImage {
 }
 
 export class ImageCache {
+  readonly ready: Promise<void>;
   private fetcher: Fetcher;
   private inFlight = new Map<string, Promise<CachedImage>>();
   private queued = new Set<string>();
@@ -32,7 +33,9 @@ export class ImageCache {
 
   constructor(fetcher: Fetcher, private now = Date.now) {
     this.fetcher = fetcher;
-    void mkdir(CACHE_DIR, { recursive: true }).then(() => this.pruneExpired());
+    this.ready = mkdir(CACHE_DIR, { recursive: true })
+      .then(() => this.pruneExpired())
+      .catch(err => log.warn(`Cache initialization failed: ${String(err)}`));
   }
 
   prefetch(urls: Array<string | null | undefined>) {
@@ -47,6 +50,7 @@ export class ImageCache {
 
   async get(url: string): Promise<CachedImage> {
     if (!isAllowedImageUrl(url, this.fetcher.nitterBaseUrls)) throw new Error('Image URL is not allowed');
+    await this.ready;
     const cached = await this.read(url);
     if (cached) return cached;
     const missing = this.missingImage(url);
