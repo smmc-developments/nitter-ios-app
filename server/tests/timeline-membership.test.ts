@@ -76,6 +76,19 @@ test('failed attempts record the attempt and count toward backoff, success reset
   assert.equal(recovered?.fetch_error, null);
 });
 
+test('shared upstream failures retain their error but clear account-specific backoff', () => {
+  database.addAccount('blocked');
+  database.updateAccountFetch('blocked', { error: 'old failure' });
+  database.updateAccountFetch('blocked', { error: 'old failure' });
+  assert.equal(database.getAccount('blocked')?.consecutive_failures, 2);
+  const error = 'Nitter request failed after trying 3 instance(s): HTTP 418';
+  database.updateAccountFetch('blocked', { error, upstreamUnavailable: true });
+  const account = database.getAccount('blocked');
+  assert.equal(account?.fetch_error, error);
+  assert.equal(account?.consecutive_failures, 0);
+  assert.notEqual(account?.last_fetched_at, null);
+});
+
 test('newly observed reposts survive retention even when original post is old', () => {
   database.addAccount('dana');
   const old = { ...tweet('dana', 'Dana'), id: '9876543210', date: '2020-01-01T00:00:00.000Z' };

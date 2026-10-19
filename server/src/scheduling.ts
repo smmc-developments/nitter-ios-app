@@ -1,7 +1,10 @@
+import { isInstanceFailure } from './upstream-errors.js';
+
 export interface SchedulableAccount {
   last_fetched_at: string | null;
   last_tweet_at: string | null;
   consecutive_failures?: number;
+  fetch_error?: string | null;
 }
 
 export function selectAccountsForCycle<T extends SchedulableAccount>(
@@ -15,7 +18,8 @@ export function selectAccountsForCycle<T extends SchedulableAccount>(
       const lastTweet = parseSqlDate(account.last_tweet_at);
       const lastFetch = parseSqlDate(account.last_fetched_at);
       const tweetAge = lastTweet === null ? Infinity : now - lastTweet;
-      const interval = tweetAge < 24 * 60 * 60_000
+      const upstreamUnavailable = isInstanceFailure(account.fetch_error);
+      const interval = upstreamUnavailable || tweetAge < 24 * 60 * 60_000
         ? baseIntervalMs
         : tweetAge < 7 * 24 * 60 * 60_000
           ? Math.max(baseIntervalMs, 60 * 60_000)
@@ -23,7 +27,9 @@ export function selectAccountsForCycle<T extends SchedulableAccount>(
       // Accounts failing upstream (deleted, suspended, API errors) back off
       // exponentially-ish so a handful of dead handles cannot dominate every
       // cycle or spam the logs.
-      const failureBackoffMs = failureBackoff(account.consecutive_failures ?? 0);
+      // A shared instance outage must not leave every account on a daily
+      // backoff, including accounts already affected before this fix.
+      const failureBackoffMs = upstreamUnavailable ? 0 : failureBackoff(account.consecutive_failures ?? 0);
       const due = lastFetch === null || now - lastFetch >= Math.max(interval, failureBackoffMs);
       const priority = lastFetch === null ? 0 : tweetAge < 24 * 60 * 60_000 ? 1 : tweetAge < 7 * 24 * 60 * 60_000 ? 2 : 3;
       return { account, due, priority, lastFetch: lastFetch ?? 0 };

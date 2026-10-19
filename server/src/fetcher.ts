@@ -5,6 +5,7 @@ import { createLogger, errorMessage } from './logger.js';
 import { NitterInstances } from './instances.js';
 import { isAllowedImageUrl } from './image-cache.js';
 import { MediaNotFoundError } from './media-errors.js';
+import { InstanceUnavailableError } from './upstream-errors.js';
 
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222');
 const MAX_MEDIA_REDIRECTS = 5;
@@ -417,6 +418,11 @@ export class Fetcher {
     }
     const lower = html.toLowerCase();
 
+    // Some instances use 418 to reject automated traffic. It is an instance
+    // failure, not a missing/suspended account; cool it down and try another.
+    if (response.status() === 418) {
+      throw new InstanceUnavailableError(`Nitter blocked the request for ${url} (HTTP 418)`);
+    }
     if (response.status() === 429 || lower.includes('too many requests')) {
       throw new InstanceUnavailableError(`429 rate limited for ${path}`);
     }
@@ -458,7 +464,10 @@ export class Fetcher {
           && new URL(request.url()).origin !== new URL(baseUrl).origin) return route.abort();
         return route.continue();
       });
-      await page.goto(url, { waitUntil: 'commit', timeout: 30_000 });
+      const response = await page.goto(url, { waitUntil: 'commit', timeout: 30_000 });
+      if (response?.status() === 418) {
+        throw new InstanceUnavailableError(`Nitter blocked browser session bootstrap for ${url} (HTTP 418)`);
+      }
       log(`Initial navigation complete for ${path}`);
 
       for (let i = 0; i < 30; i++) {
@@ -496,5 +505,4 @@ export class Fetcher {
   }
 }
 
-class InstanceUnavailableError extends Error {}
 class SessionExpiredError extends InstanceUnavailableError {}

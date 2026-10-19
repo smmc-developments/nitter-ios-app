@@ -9,6 +9,7 @@ import {
 import { cursorPath, hasTimelineOverlap, selectAccountsForCycle } from './scheduling.js';
 import type { ImageCache } from './image-cache.js';
 import { createLogger, errorMessage } from './logger.js';
+import { isInstanceFailure } from './upstream-errors.js';
 
 const CONCURRENCY = parsePositiveInt(process.env.FETCH_CONCURRENCY, 2);
 const REQUEST_START_INTERVAL_MS = parsePositiveInt(process.env.FETCH_START_INTERVAL_MS, 1_000);
@@ -141,7 +142,7 @@ export class Scheduler {
       } catch (err: any) {
         const msg = errorMessage(err);
         log.error(`@${account.username} FAILED: ${msg}`);
-        updateAccountFetch(account.username, { error: msg });
+        updateAccountFetch(account.username, { error: msg, upstreamUnavailable: isInstanceFailure(err) });
         return { parsed: 0, inserted: 0 };
       }
     });

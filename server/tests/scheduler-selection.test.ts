@@ -9,13 +9,14 @@ function account(
   lastFetched: string | null,
   lastTweet: string | null,
   consecutiveFailures = 0,
+  fetchError: string | null = null,
 ): TestAccount {
   return {
     username,
     display_name: null,
     avatar_url: null,
     last_fetched_at: lastFetched,
-    fetch_error: null,
+    fetch_error: fetchError,
     last_tweet_at: lastTweet,
     consecutive_failures: consecutiveFailures,
   };
@@ -26,7 +27,7 @@ interface TestAccount {
   display_name: null;
   avatar_url: null;
   last_fetched_at: string | null;
-  fetch_error: null;
+  fetch_error: string | null;
   last_tweet_at: string | null;
   consecutive_failures: number;
 }
@@ -82,6 +83,36 @@ test('repeated failures back off to hourly, then six-hourly, then daily', () => 
     [account('five-old', '2026-07-20 17:00:00', '2026-07-20T16:00:00.000Z', 5)],
     15 * 60_000, 10, now,
   ).map(a => a.username), ['five-old']);
+});
+
+test('saved instance failures retry normally instead of inheriting daily account backoff', () => {
+  for (const error of [
+    'Nitter returned HTTP 418 for /alice/with_replies',
+    'Nitter returned HTTP 503 for /alice/with_replies',
+    'Request failed for https://instance.example/alice: TimeoutError: Timeout 30000ms exceeded.',
+    'Nitter request failed after trying 3 instance(s): No healthy Nitter instance is currently available',
+  ]) {
+    const selected = selectAccountsForCycle([
+      account('blocked', '2026-07-20 23:30:00', '2026-06-01T00:00:00.000Z', 12, error),
+    ], 15 * 60_000, 10, now);
+    assert.deepEqual(selected.map(a => a.username), ['blocked'], error);
+  }
+});
+
+test('instance outages still respect the normal request interval', () => {
+  const selected = selectAccountsForCycle([
+    account('not-due', '2026-07-20 23:59:00', null, 12, 'Nitter returned HTTP 418 for /not-due/with_replies'),
+  ], 15 * 60_000, 10, now);
+  assert.deepEqual(selected, []);
+});
+
+test('account-specific HTTP 404 and 410 failures keep their existing backoff', () => {
+  for (const status of [404, 410]) {
+    const selected = selectAccountsForCycle([
+      account('missing', '2026-07-20 22:00:00', '2026-07-20T21:00:00.000Z', 12, `Nitter returned HTTP ${status} for /missing/with_replies`),
+    ], 15 * 60_000, 10, now);
+    assert.deepEqual(selected, []);
+  }
 });
 
 test('cursor links stay on the requested account timeline', () => {

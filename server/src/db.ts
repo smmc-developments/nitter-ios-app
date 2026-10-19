@@ -1,10 +1,18 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
+import { resolve } from 'node:path';
 import { normalizeTweetDate } from './dates.js';
 import { DATA_DIR } from './paths.js';
 import { createLogger } from './logger.js';
 
 const log = createLogger('db', 'debug');
+
+// Test workers must configure their temporary directory before importing any
+// module that captures DATA_DIR. Refuse an inconsistent path before touching
+// the filesystem, rather than accidentally opening the development database.
+if (process.env.NODE_TEST_CONTEXT && (!process.env.DATA_DIR || DATA_DIR !== resolve(process.env.DATA_DIR))) {
+  throw new Error('Tests must set DATA_DIR before importing application modules');
+}
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 log(`Data directory: ${DATA_DIR}`);
@@ -214,7 +222,7 @@ export function getAccount(username: string): AccountRow | undefined {
   return row;
 }
 
-export function updateAccountFetch(username: string, info: { displayName?: string; avatarUrl?: string; error?: string }) {
+export function updateAccountFetch(username: string, info: { displayName?: string; avatarUrl?: string; error?: string; upstreamUnavailable?: boolean }) {
   log(`updateAccountFetch(@${username}) — name: ${info.displayName ?? '-'}, avatar: ${info.avatarUrl ? 'yes' : '-'}, error: ${info.error ?? '-'}`);
   // last_fetched_at tracks the last attempt (success or failure) so failing
   // accounts do not stay "due" forever; consecutive_failures drives the
@@ -225,13 +233,14 @@ export function updateAccountFetch(username: string, info: { displayName?: strin
         display_name = COALESCE(?, display_name),
         avatar_url = COALESCE(?, avatar_url),
         fetch_error = ?,
-        consecutive_failures = CASE WHEN ? IS NULL THEN 0 ELSE consecutive_failures + 1 END
+        consecutive_failures = CASE WHEN ? IS NULL OR ? THEN 0 ELSE consecutive_failures + 1 END
     WHERE username = ?
   `).run(
     info.displayName ?? null,
     info.avatarUrl ?? null,
     info.error ?? null,
     info.error ?? null,
+    info.upstreamUnavailable ? 1 : 0,
     username,
   );
 }

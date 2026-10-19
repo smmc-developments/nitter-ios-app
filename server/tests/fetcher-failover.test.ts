@@ -5,6 +5,7 @@ import { NitterInstances } from '../src/instances.js';
 import { isAllowedImageUrl, isAllowedVideoUrl } from '../src/image-cache.js';
 import { MediaNotFoundError } from '../src/media-errors.js';
 import { getLogs } from '../src/logger.js';
+import { InstanceUnavailableError } from '../src/upstream-errors.js';
 
 const first = 'https://first.example';
 const second = 'https://second.example';
@@ -44,6 +45,54 @@ test('rate limits switch to another instance and preserve the requested path and
   assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: second });
   assert.deepEqual(requested, [first + path, second + path]);
   assert.equal(await instances.select(), second);
+});
+
+test('HTTP 418 blocks fail over immediately and later accounts skip the blocked instance', async () => {
+  const requested: string[] = [];
+  const { fetcher, bootstraps, instances } = setup(async url => {
+    requested.push(url);
+    return url.startsWith(first) ? apiResponse(418, "I'm a teapot") : apiResponse();
+  });
+  const path = '/alice/with_replies?cursor=abc';
+  assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: second });
+  assert.equal((await fetcher.fetchPage('/bob/with_replies')).baseUrl, second);
+  assert.deepEqual(requested, [first + path, second + path, second + '/bob/with_replies']);
+  assert.deepEqual(bootstraps, [first, second]);
+  assert.equal(await instances.select(), second);
+});
+
+test('HTTP 418 failover stays bounded and direct mode reports that switching is disabled', async () => {
+  for (const automatic of [true, false]) {
+    let calls = 0;
+    const { fetcher } = setup(async () => { calls++; return apiResponse(418, "I'm a teapot"); }, automatic);
+    await assert.rejects(fetcher.fetchPage('/alice/with_replies'), error => {
+      assert.ok(error instanceof InstanceUnavailableError);
+      assert.ok(error.message.includes('HTTP 418'));
+      assert.ok(error.message.includes(automatic ? 'after trying 3 instance(s)' : 'NITTER_AUTO_INSTANCE=false'));
+      return true;
+    });
+    assert.equal(calls, automatic ? 3 : 1);
+  }
+});
+
+test('a browser bootstrap returning HTTP 418 is not mistaken for a solved challenge', async () => {
+  const requested: string[] = [];
+  const { fetcher, state } = setup(async url => { requested.push(url); return apiResponse(); });
+  const solve = (Fetcher.prototype as unknown as { solveChallenge(path: string, base: string): Promise<void> }).solveChallenge;
+  const stub = state.solveChallenge;
+  let polls = 0;
+  let closed = 0;
+  (state.context as { newPage: unknown }).newPage = async () => ({
+    route: async () => {},
+    goto: async () => ({ status: () => 418 }),
+    waitForTimeout: async () => { polls++; throw new Error('Must not poll a blocked page'); },
+    close: async () => { closed++; },
+  });
+  state.solveChallenge = async (path, base) => base === first ? solve.call(fetcher, path, base) : stub(path, base);
+  assert.equal((await fetcher.fetchPage('/alice/with_replies')).baseUrl, second);
+  assert.deepEqual(requested, [second + '/alice/with_replies']);
+  assert.equal(polls, 0);
+  assert.equal(closed, 1);
 });
 
 test('network failures and incomplete HTML trigger failover', async () => {

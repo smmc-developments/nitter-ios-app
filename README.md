@@ -65,6 +65,8 @@ In automatic mode, Share copies stable `https://xxcancel.com/username/status/id`
 
 Startup logs identify **direct** or **automatic** instance mode. Timeline timeouts trigger failover only in automatic mode; direct-mode errors explain that failover is disabled, while exhausted automatic requests list the attempted instances. Playwright request dumps and authentication headers are excluded from logs and client error messages.
 
+HTTP 418 is treated as an instance block and triggers failover in automatic mode. Instance outages retry on the normal fetch interval instead of putting individual accounts on daily failure backoff, including accounts with saved HTTP 418 errors from older versions. After upgrading, use **Fetch** in the app to retry immediately; no account or database reset is needed.
+
 To confirm the setting in a deployed container, run this from `server/`:
 
 ```bash
