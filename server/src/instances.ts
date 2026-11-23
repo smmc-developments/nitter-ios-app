@@ -12,6 +12,7 @@ const MAX_DISCOVERY_REDIRECTS = 3;
 const REFRESH_MS = 15 * 60_000;
 const COOLDOWN_MS = 5 * 60_000;
 const log = createLogger('instances');
+type InstancePurpose = 'page' | 'media';
 
 export function configuredBaseUrl(): string {
   return (process.env.NITTER_BASE_URL || 'https://nitter.click').replace(/\/+$/, '');
@@ -119,7 +120,9 @@ export class NitterInstances {
   private candidates: string[];
   private known: string[];
   private active: string | null = null;
+  private activeMedia: string | null = null;
   private failedUntil = new Map<string, number>();
+  private mediaFailedUntil = new Map<string, number>();
   private refreshedAt: number | null = null;
   private refreshing: Promise<void> | null = null;
   private discover: () => Promise<string[]>;
@@ -142,25 +145,37 @@ export class NitterInstances {
     return this.known.some(base => new URL(base).origin === origin);
   }
 
-  async select(excluded: Set<string> = new Set()): Promise<string> {
+  async select(excluded: Set<string> = new Set(), purpose: InstancePurpose = 'page'): Promise<string> {
     await this.refresh();
-    const choose = () => [this.active, ...this.candidates].find((base): base is string =>
-      base !== null && !excluded.has(base) && (this.failedUntil.get(base) ?? 0) <= this.now());
+    const choose = () => [purpose === 'media' ? this.activeMedia ?? this.active : this.active, ...this.candidates].find((base): base is string =>
+      base !== null && !excluded.has(base) && (this.failedUntil.get(base) ?? 0) <= this.now()
+      && (purpose === 'page' || (this.mediaFailedUntil.get(base) ?? 0) <= this.now()));
     let selected = choose();
     if (!selected && this.automatic && this.refreshedAt !== null && this.now() - this.refreshedAt >= 60_000) {
       await this.refresh(true);
       selected = choose();
     }
     if (!selected) throw new Error('No healthy Nitter instance is currently available');
-    this.active = selected;
+    if (purpose === 'media') this.activeMedia = selected;
+    else this.active = selected;
     return selected;
   }
 
-  failed(base: string, error?: unknown) {
+  succeeded(base: string, purpose: InstancePurpose = 'page') {
+    if (!this.known.includes(base) || (this.failedUntil.get(base) ?? 0) > this.now()) return;
+    if (purpose === 'media') {
+      if ((this.mediaFailedUntil.get(base) ?? 0) <= this.now()) this.activeMedia = base;
+    } else this.active = base;
+  }
+
+  failed(base: string, error?: unknown, purpose: InstancePurpose = 'page') {
     if (!this.automatic) return;
-    this.failedUntil.set(base, this.now() + COOLDOWN_MS);
-    if (this.active === base) this.active = null;
-    log.warn(`Cooling down failed instance ${base} for ${COOLDOWN_MS / 60_000} minutes${error ? `: ${String(error)}` : ''}`);
+    const failures = purpose === 'media' ? this.mediaFailedUntil : this.failedUntil;
+    const alreadyCoolingDown = (failures.get(base) ?? 0) > this.now();
+    failures.set(base, this.now() + COOLDOWN_MS);
+    if (purpose === 'page' && this.active === base) this.active = null;
+    if (this.activeMedia === base) this.activeMedia = null;
+    if (!alreadyCoolingDown) log.warn(`Cooling down failed ${purpose === 'media' ? 'media ' : ''}instance ${base} for ${COOLDOWN_MS / 60_000} minutes${error ? `: ${String(error)}` : ''}`);
   }
 
   private async refresh(force = false): Promise<void> {
@@ -174,9 +189,13 @@ export class NitterInstances {
         this.candidates = [...new Set([...discovered, this.fallback])];
         // Retain recently discovered origins so cached media still passes the
         // allowlist after a switch, but do not grow the list without bounds.
-        this.known = [...new Set([this.fallback, ...(this.active ? [this.active] : []), ...this.candidates, ...this.known])].slice(0, 64);
+        this.known = [...new Set([this.fallback, ...(this.active ? [this.active] : []),
+          ...(this.activeMedia ? [this.activeMedia] : []), ...this.candidates, ...this.known])].slice(0, 64);
         for (const base of this.failedUntil.keys()) {
           if (!this.known.includes(base)) this.failedUntil.delete(base);
+        }
+        for (const base of this.mediaFailedUntil.keys()) {
+          if (!this.known.includes(base)) this.mediaFailedUntil.delete(base);
         }
         log(`Discovered ${discovered.length} Nitter instance(s) through xnotme`);
       } catch (error) {

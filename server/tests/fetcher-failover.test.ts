@@ -12,8 +12,8 @@ const second = 'https://second.example';
 const third = 'https://third.example';
 const html = '<div class="timeline">Posts</div>';
 
-function apiResponse(status = 200, body = html) {
-  return { status: () => status, ok: () => status >= 200 && status < 300, text: async () => body, dispose: async () => {} };
+function apiResponse(status = 200, body = html, headers: Record<string, string> = {}) {
+  return { status: () => status, ok: () => status >= 200 && status < 300, headers: () => headers, text: async () => body, dispose: async () => {} };
 }
 
 function setup(request: (url: string, options: unknown) => Promise<ReturnType<typeof apiResponse>>, automatic = true) {
@@ -45,6 +45,139 @@ test('rate limits switch to another instance and preserve the requested path and
   assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: second });
   assert.deepEqual(requested, [first + path, second + path]);
   assert.equal(await instances.select(), second);
+});
+
+test('same-origin anti-bot redirects are followed without logging their query tokens', async () => {
+  const watermark = getLogs().latest;
+  const path = '/alice/with_replies';
+  const requested: string[] = [];
+  const { fetcher, instances } = setup(async url => {
+    requested.push(url);
+    return requested.length === 1
+      ? apiResponse(302, '', { location: `${path}?__galadriel=secret-proof` })
+      : apiResponse();
+  });
+  assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: first });
+  assert.deepEqual(requested, [first + path, first + path + '?__galadriel=secret-proof']);
+  assert.equal(await instances.select(), first);
+  assert.ok(getLogs({ after: watermark }).entries.every(entry => !entry.message.includes('secret-proof')));
+});
+
+test('redirects between discovered instances retain the final origin and prefer it for later accounts', async () => {
+  const path = '/alice/with_replies?cursor=abc';
+  const requested: string[] = [];
+  const { fetcher, instances } = setup(async (url, options) => {
+    requested.push(url);
+    assert.deepEqual((options as { headers: unknown }).headers, { 'user-agent': 'Mozilla/5.0' });
+    return url.startsWith(first) ? apiResponse(301, '', { location: second + path }) : apiResponse();
+  });
+  assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: second });
+  assert.equal(await instances.select(), second);
+  assert.equal((await fetcher.fetchPage('/bob/with_replies')).baseUrl, second);
+  assert.deepEqual(requested, [first + path, second + path, second + '/bob/with_replies']);
+});
+
+test('a challenge after a redirect is solved at the final origin and actual path', async () => {
+  const path = '/alice/with_replies';
+  let secondRequests = 0;
+  const { fetcher, state } = setup(async url => {
+    if (url.startsWith(first)) return apiResponse(301, '', { location: second + path + '?__galadriel=secret-proof' });
+    return ++secondRequests === 1 ? apiResponse(200, '<h1>Checking your browser</h1>') : apiResponse();
+  });
+  const challenged: Array<{ path: string; base: string }> = [];
+  state.solveChallenge = async (path, base) => { challenged.push({ path, base }); };
+  assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: second });
+  assert.deepEqual(challenged, [{ path, base: first }, { path: path + '?__galadriel=secret-proof', base: second }]);
+});
+
+test('a failed redirect destination is cooled down rather than repeatedly selected as another candidate', async () => {
+  const requested: string[] = [];
+  const { fetcher, instances } = setup(async url => {
+    requested.push(url);
+    if (url.startsWith(first)) return apiResponse(301, '', { location: second + '/alice' });
+    if (url.startsWith(second)) return apiResponse(429, 'Rate limited');
+    return apiResponse();
+  });
+  assert.deepEqual(await fetcher.fetchPage('/alice'), { html, baseUrl: third });
+  assert.deepEqual(requested, [first + '/alice', second + '/alice', third + '/alice']);
+  assert.equal(await instances.select(), third);
+});
+
+test('page redirects to unknown hosts, internal hosts, different paths, or embedded credentials are rejected', async () => {
+  for (const location of [
+    'https://unknown.example/alice', 'https://127.0.0.1/alice', 'http://first.example/alice',
+    second + '/other-account', 'https://user:password@second.example/alice', first + '/alice#fragment',
+  ]) {
+    let calls = 0;
+    const { fetcher } = setup(async () => { calls++; return apiResponse(302, '', { location }); }, false);
+    await assert.rejects(fetcher.fetchPage('/alice'), /redirect destination is not allowed/);
+    assert.equal(calls, 1, location);
+  }
+});
+
+test('page redirect loops are bounded and every response is disposed', async () => {
+  let calls = 0;
+  let disposed = 0;
+  const { fetcher } = setup(async () => {
+    calls++;
+    return { ...apiResponse(302, '', { location: '/alice' }), dispose: async () => { disposed++; } };
+  }, false);
+  await assert.rejects(fetcher.fetchPage('/alice'), /redirected too many times/);
+  assert.equal(calls, 6);
+  assert.equal(disposed, 6);
+});
+
+test('redirect hops share the initial HTTP request deadline', async t => {
+  let now = 0;
+  t.mock.method(Date, 'now', () => now);
+  const timeouts: number[] = [];
+  const { fetcher } = setup(async (_url, options) => {
+    timeouts.push((options as { timeout: number }).timeout);
+    now += 1_000;
+    return timeouts.length === 1 ? apiResponse(302, '', { location: '/alice?cursor=abc' }) : apiResponse();
+  }, false);
+  await fetcher.fetchPage('/alice');
+  assert.deepEqual(timeouts, [30_000, 29_000]);
+});
+
+test('browser bootstrap waits for an empty-title challenge to become real Nitter content', async () => {
+  const { fetcher, state } = setup(async () => apiResponse(), false);
+  let polls = 0;
+  let closed = 0;
+  const frame = {};
+  (state.context as { newPage: unknown }).newPage = async () => ({
+    route: async () => {},
+    mainFrame: () => frame,
+    goto: async () => ({ status: () => 200 }),
+    waitForTimeout: async () => { polls++; },
+    content: async () => polls === 1 ? '<h1>Checking your browser</h1>' : html,
+    url: () => first + '/alice',
+    close: async () => { closed++; },
+  });
+  state.solveChallenge = (Fetcher.prototype as unknown as { solveChallenge(path: string, base: string): Promise<void> }).solveChallenge.bind(fetcher);
+  assert.deepEqual(await fetcher.fetchPage('/alice'), { html, baseUrl: first });
+  assert.equal(polls, 2);
+  assert.equal(closed, 1);
+});
+
+test('an unresolved empty-title browser challenge cannot produce a ready session even with a search form', async () => {
+  let requests = 0;
+  const { fetcher, state } = setup(async () => { requests++; return apiResponse(); }, false);
+  let polls = 0;
+  let closed = 0;
+  (state.context as { newPage: unknown }).newPage = async () => ({
+    route: async () => {},
+    goto: async () => ({ status: () => 200 }),
+    waitForTimeout: async () => { polls++; },
+    content: async () => '<nav></nav><form action="/search"></form><h1>Checking your browser</h1>',
+    url: () => first + '/alice',
+    close: async () => { closed++; },
+  });
+  state.solveChallenge = (Fetcher.prototype as unknown as { solveChallenge(path: string, base: string): Promise<void> }).solveChallenge.bind(fetcher);
+  await assert.rejects(fetcher.ensureSession(false, first), /Challenge did not solve/);
+  assert.equal(polls, 30);
+  assert.equal(requests, 0);
+  assert.equal(closed, 1);
 });
 
 test('HTTP 418 blocks fail over immediately and later accounts skip the blocked instance', async () => {
@@ -175,7 +308,7 @@ test('a profile-only Anubis challenge is solved on the actual path with the same
   const challenged: Array<{ path: string; base: string }> = [];
   state.solveChallenge = async (path, base) => { challenged.push({ path, base }); };
   assert.deepEqual(await fetcher.fetchPage(path), { html, baseUrl: first });
-  assert.deepEqual(challenged, [{ path: '/', base: first }, { path, base: first }]);
+  assert.deepEqual(challenged, [{ path, base: first }, { path, base: first }]);
   assert.equal(calls, 2);
 });
 
@@ -251,6 +384,16 @@ test('image requests fail over, use origin-specific cookies, and reject unknown 
   assert.equal(requested.length, 2);
   assert.equal(isAllowedImageUrl(first + '/pic/image.jpg', fetcher.nitterBaseUrls), true);
   assert.equal(isAllowedImageUrl('https://unknown.example/pic/image.jpg', fetcher.nitterBaseUrls), false);
+  assert.equal(await instances.select(), first, 'An image failure must not move or cool down the timeline instance');
+});
+
+test('failed image requests cannot exhaust the instances used for fetching tweets', async t => {
+  const { fetcher, instances } = setup(async () => apiResponse());
+  await instances.select();
+  t.mock.method(globalThis, 'fetch', async () => new Response('Bad image', { status: 400 }));
+  await assert.rejects(fetcher.fetchImage(first + '/pic/bad-image.jpg'), /HTTP 400/);
+  assert.equal(await instances.select(), first);
+  assert.equal((await fetcher.fetchPage('/alice')).baseUrl, first);
 });
 
 for (const status of [404, 410] as const) {

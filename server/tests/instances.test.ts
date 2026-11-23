@@ -128,6 +128,30 @@ test('automatic mode switches instances and respects cooldowns', async () => {
   assert.equal(await pool.select(), first);
 });
 
+test('media cooldowns and preferences do not disable or move the active timeline instance', async () => {
+  let now = 0;
+  const pool = new NitterInstances({ automatic: true, baseUrl: fallback, discover: async () => [first, second], now: () => now });
+  assert.equal(await pool.select(), first);
+  pool.failed(first, new Error('Image timeout'), 'media');
+  assert.equal(await pool.select(new Set(), 'media'), second);
+  assert.equal(await pool.select(), first);
+  pool.failed(second, new Error('Image timeout'), 'media');
+  assert.equal(await pool.select(new Set(), 'media'), fallback);
+  pool.failed(fallback, new Error('Image timeout'), 'media');
+  await assert.rejects(pool.select(new Set(), 'media'), /No healthy/);
+  assert.equal(await pool.select(), first);
+  now += 5 * 60_000;
+  assert.equal(await pool.select(new Set(), 'media'), first);
+});
+
+test('timeline failures also exclude that host from media selection', async () => {
+  const pool = new NitterInstances({ automatic: true, baseUrl: fallback, discover: async () => [first, second] });
+  assert.equal(await pool.select(), first);
+  pool.failed(first);
+  assert.equal(await pool.select(new Set(), 'media'), second);
+  assert.equal(await pool.select(), second);
+});
+
 test('concurrent requests share one discovery and periodically refresh the list', async () => {
   let now = 0;
   let calls = 0;
@@ -219,5 +243,22 @@ test('bounded media history always retains the active, fallback, and current can
     assert.ok(pool.baseUrls.length <= 64);
     assert.ok(pool.baseUrls.includes(fallback));
     assert.ok(pool.baseUrls.includes(`https://instance-${generation}-19.example`));
+  }
+});
+
+test('refreshes retain an independently active media origin as well as the active timeline origin', async () => {
+  let now = 0;
+  let generation = 0;
+  const pool = new NitterInstances({ automatic: true, baseUrl: fallback, now: () => now, discover: async () =>
+    Array.from({ length: 20 }, (_, index) => `https://source-${generation}-${index}.example`) });
+  const page = await pool.select();
+  const media = await pool.select(new Set([page]), 'media');
+  for (generation = 1; generation <= 5; generation++) {
+    now += 15 * 60_000;
+    assert.equal(await pool.select(), page);
+    assert.equal(await pool.select(new Set(), 'media'), media);
+    assert.ok(pool.baseUrls.includes(page));
+    assert.ok(pool.baseUrls.includes(media));
+    assert.ok(pool.baseUrls.length <= 64);
   }
 });

@@ -56,6 +56,13 @@ test('log messages are single-line and bounded', () => {
   assert.equal(sanitizeLogMessage('a'.repeat(10_000)).length, 2_049);
 });
 
+test('anti-bot redirect proof tokens are never included in logs or error messages', () => {
+  const message = sanitizeLogMessage('Request https://instance.example/alice?__galadriel=secret-proof&cursor=abc failed');
+  assert.ok(!message.includes('secret-proof'));
+  assert.ok(message.includes('__galadriel=[REDACTED]'));
+  assert.ok(message.includes('cursor=abc'));
+});
+
 test('network error details include sanitized causes and error codes', () => {
   const cause = Object.assign(new Error('certificate has expired\nAuthorization: Bearer secret-token'), { code: 'CERT_HAS_EXPIRED' });
   const message = errorDetails(new TypeError('fetch failed', { cause }));

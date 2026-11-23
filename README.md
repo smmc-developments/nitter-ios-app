@@ -59,9 +59,11 @@ To avoid manually switching instances, add this to `server/.env` and recreate th
 NITTER_AUTO_INSTANCE=true
 ```
 
-The server discovers Nitter instances advertised by [xnotme.com](https://xnotme.com/) (formerly xxcancel.com), refreshes the list every 15 minutes, and tries up to three instances per request. Failed instances cool down for five minutes. `NITTER_BASE_URL` remains a fallback if discovery is unavailable; setting it to `https://xnotme.com` or the legacy `https://xxcancel.com` also enables automatic mode, with `https://nitter.click` as the fallback.
+The server discovers Nitter instances advertised by [xnotme.com](https://xnotme.com/) (formerly xxcancel.com), refreshes the list every 15 minutes, and tries up to three candidate instances per request. Timeline redirects have their own bounded hop limit and must stay on the requested route at a configured or discovered instance. Failed instances cool down for five minutes. `NITTER_BASE_URL` remains a fallback if discovery is unavailable; setting it to `https://xnotme.com` or the legacy `https://xxcancel.com` also enables automatic mode, with `https://nitter.click` as the fallback.
 
 In automatic mode, Share copies stable `https://xnotme.com/username/status/id` links. Timelines, images, and videos are fetched from the actual Nitter instances, with separate browser sessions and a restricted media allowlist. Availability still depends on xnotme and the public instances; anti-bot challenges and rate limits can prevent access. Pagination cursors may not work across different instances.
+
+Browser challenges are checked against page content, including checks with empty titles; a session is not considered ready until actual Nitter content appears. Media failures have separate cooldowns and do not disable a working timeline instance. Real HTTP 429 limits, explicit access blocks, and redirects to unrecognized sites still fail rather than being hidden or followed unsafely.
 
 Discovery permits bounded redirects only between the known dispatcher domains on its fixed discovery path. If discovery fails, the server retains its current instance pool and logs the underlying network error when available (for example, DNS, TLS, or connection timeout), without exposing authentication headers.
 

@@ -8,6 +8,7 @@ export function sanitizeLogMessage(message: string): string {
     .split(/(?:\r?\n|^)\s*Call log:\s*(?:\r?\n|$)/i)[0]
     .replace(/(["'](?:cookie|set-cookie|authorization|proxy-authorization|x-api-key)["']\s*:\s*)(["'])[\s\S]*?\2/gi, '$1$2[REDACTED]$2')
     .replace(/(\b(?:cookie|set-cookie|authorization|proxy-authorization|x-api-key)\s*:\s*)[^\r\n]*/gi, '$1[REDACTED]')
+    .replace(/([?&](?:__galadriel|__cf_chl_tk|__cf_chl_rt_tk)=)[^&\s"'<>]+/gi, '$1[REDACTED]')
     .replace(/[\r\n\u2028\u2029]+/g, ' ')
     .trim();
   return safe.length > 2_048 ? `${safe.slice(0, 2_048)}…` : safe;
