@@ -59,9 +59,11 @@ To avoid manually switching instances, add this to `server/.env` and recreate th
 NITTER_AUTO_INSTANCE=true
 ```
 
-The server discovers Nitter instances advertised by [xxcancel.com](https://xxcancel.com/), refreshes the list every 15 minutes, and tries up to three instances per request. Failed instances cool down for five minutes. `NITTER_BASE_URL` remains a fallback if discovery is unavailable; setting it to `https://xxcancel.com` also enables automatic mode, with `https://nitter.click` as the fallback.
+The server discovers Nitter instances advertised by [xnotme.com](https://xnotme.com/) (formerly xxcancel.com), refreshes the list every 15 minutes, and tries up to three instances per request. Failed instances cool down for five minutes. `NITTER_BASE_URL` remains a fallback if discovery is unavailable; setting it to `https://xnotme.com` or the legacy `https://xxcancel.com` also enables automatic mode, with `https://nitter.click` as the fallback.
 
-In automatic mode, Share copies stable `https://xxcancel.com/username/status/id` links. Timelines, images, and videos are fetched from the actual Nitter instances, with separate browser sessions and a restricted media allowlist. Availability still depends on xxcancel and the public instances; anti-bot challenges and rate limits can prevent access. Pagination cursors may not work across different instances.
+In automatic mode, Share copies stable `https://xnotme.com/username/status/id` links. Timelines, images, and videos are fetched from the actual Nitter instances, with separate browser sessions and a restricted media allowlist. Availability still depends on xnotme and the public instances; anti-bot challenges and rate limits can prevent access. Pagination cursors may not work across different instances.
+
+Discovery permits bounded redirects only between the known dispatcher domains on its fixed discovery path. If discovery fails, the server retains its current instance pool and logs the underlying network error when available (for example, DNS, TLS, or connection timeout), without exposing authentication headers.
 
 Startup logs identify **direct** or **automatic** instance mode. Timeline timeouts trigger failover only in automatic mode; direct-mode errors explain that failover is disabled, while exhausted automatic requests list the attempted instances. Playwright request dumps and authentication headers are excluded from logs and client error messages.
 
@@ -196,7 +198,7 @@ Set `ALLOW_INSECURE_NO_AUTH=true` only for isolated local testing.
 | `PROXY_SECRET` | *(required by release Compose)* | Stable HMAC signing key for media URLs |
 | `ALLOW_INSECURE_NO_AUTH` | `false` | Disable auth for local testing |
 | `NITTER_BASE_URL` | `https://nitter.click` | Nitter instance used for timelines and media |
-| `NITTER_AUTO_INSTANCE` | `false` | Discover instances through xxcancel and switch on failures; use `NITTER_BASE_URL` as fallback |
+| `NITTER_AUTO_INSTANCE` | `false` | Discover instances through xnotme and switch on failures; use `NITTER_BASE_URL` as fallback |
 | `FETCH_MINUTES` | `15` | Minutes between automatic fetch cycles |
 | `LOG_LEVEL` | `info` | Server output: `debug`, `info`, `warn`, `error`, or `silent` |
 | `LOG_BUFFER_SIZE` | `1000` | Recent log entries kept for `/api/logs` (Settings → Server Logs in the app) |

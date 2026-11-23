@@ -85,7 +85,7 @@ export class Fetcher {
   async start() {
     log('initializing...');
     log(this.instances.automatic
-      ? 'Nitter instance mode: automatic — xxcancel discovery and timeout failover enabled'
+      ? 'Nitter instance mode: automatic — xnotme discovery and timeout failover enabled'
       : 'Nitter instance mode: direct — failover disabled; set NITTER_AUTO_INSTANCE=true to enable it');
     const chromePath = findChromePath();
     const needsXvfb = !hasDisplay() && hasXvfbRun();

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLogger, errorMessage, getLogs, isLogLevelEnabled, parseLogLevel, sanitizeLogMessage } from '../src/logger.js';
+import { createLogger, errorDetails, errorMessage, getLogs, isLogLevelEnabled, parseLogLevel, sanitizeLogMessage } from '../src/logger.js';
 
 test('defaults to info and accepts supported log levels case-insensitively', () => {
   assert.equal(parseLogLevel(undefined), 'info');
@@ -54,4 +54,28 @@ test('console output and client log buffers receive the same sanitized message',
 test('log messages are single-line and bounded', () => {
   assert.equal(sanitizeLogMessage('First\r\nSecond\u2028Third'), 'First Second Third');
   assert.equal(sanitizeLogMessage('a'.repeat(10_000)).length, 2_049);
+});
+
+test('network error details include sanitized causes and error codes', () => {
+  const cause = Object.assign(new Error('certificate has expired\nAuthorization: Bearer secret-token'), { code: 'CERT_HAS_EXPIRED' });
+  const message = errorDetails(new TypeError('fetch failed', { cause }));
+  assert.ok(message.includes('fetch failed'));
+  assert.ok(message.includes('certificate has expired'));
+  assert.ok(message.includes('CERT_HAS_EXPIRED'));
+  assert.ok(!message.includes('secret-token'));
+  assert.ok(!message.includes('\n'));
+});
+
+test('error details handle aggregate failures, cycles, and long chains without unbounded output', () => {
+  const dns = Object.assign(new Error('DNS lookup failed'), { code: 'ENOTFOUND' });
+  const timeout = Object.assign(new Error('Connect timed out'), { code: 'ETIMEDOUT' });
+  const message = errorDetails(new TypeError('fetch failed', { cause: new AggregateError([dns, timeout], 'Connection attempts failed') }));
+  assert.ok(message.includes('ENOTFOUND'));
+  assert.ok(message.includes('ETIMEDOUT'));
+  const cyclic = new Error('Cyclic error', { cause: undefined });
+  cyclic.cause = cyclic;
+  assert.equal(errorDetails(cyclic), 'Cyclic error');
+  let chain: Error = new Error('Deep cause');
+  for (let i = 0; i < 20; i++) chain = new Error('x'.repeat(1_000), { cause: chain });
+  assert.ok(errorDetails(chain).length <= 2_049);
 });

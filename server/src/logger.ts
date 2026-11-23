@@ -19,6 +19,28 @@ export function errorMessage(error: unknown): string {
   return sanitizeLogMessage(message);
 }
 
+// Native fetch hides useful DNS/TLS/connect failures under Error.cause.
+// Include only bounded, sanitized messages/codes, never request options.
+export function errorDetails(error: unknown): string {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  const visit = (value: unknown, depth: number) => {
+    if (depth >= 4 || seen.has(value)) return;
+    seen.add(value);
+    const message = errorMessage(value);
+    const code = value && typeof value === 'object' && 'code' in value && typeof value.code === 'string' ? value.code : '';
+    if (message || code) parts.push(code ? `[${code}] ${message}` : message);
+    if (value && typeof value === 'object') {
+      if ('cause' in value && value.cause !== undefined) visit(value.cause, depth + 1);
+      if ('errors' in value && Array.isArray(value.errors)) {
+        for (const nested of value.errors.slice(0, 2)) visit(nested, depth + 1);
+      }
+    }
+  };
+  visit(error, 0);
+  return sanitizeLogMessage(parts.join(' — ')) || 'Unknown error';
+}
+
 const priorities: Record<LogLevel, number> = {
   debug: 10,
   info: 20,

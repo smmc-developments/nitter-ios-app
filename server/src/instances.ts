@@ -1,9 +1,14 @@
 import * as cheerio from 'cheerio';
 import { lookup } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
-import { createLogger } from './logger.js';
+import { createLogger, errorDetails } from './logger.js';
 
 export const XXCANCEL_URL = 'https://xxcancel.com';
+export const XNOTME_URL = 'https://xnotme.com';
+const DISPATCHER_ORIGINS = new Set([XXCANCEL_URL, XNOTME_URL]);
+const DISCOVERY_PATH = '/nasa';
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_DISCOVERY_REDIRECTS = 3;
 const REFRESH_MS = 15 * 60_000;
 const COOLDOWN_MS = 5 * 60_000;
 const log = createLogger('instances');
@@ -13,11 +18,11 @@ export function configuredBaseUrl(): string {
 }
 
 export function automaticInstances(): boolean {
-  return process.env.NITTER_AUTO_INSTANCE === 'true' || configuredBaseUrl() === XXCANCEL_URL;
+  return process.env.NITTER_AUTO_INSTANCE === 'true' || DISPATCHER_ORIGINS.has(configuredBaseUrl());
 }
 
 export function shareBaseUrl(): string {
-  return automaticInstances() ? XXCANCEL_URL : configuredBaseUrl();
+  return automaticInstances() ? XNOTME_URL : configuredBaseUrl();
 }
 
 // Only read the routing controls, never arbitrary links in the dispatcher page.
@@ -35,7 +40,7 @@ export function parseInstanceOrigins(html: string): string[] {
         || url.pathname !== '/nasa' || url.search || url.hash
         || !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host) || isIP(host)
         || /\.(localhost|local|internal|test|invalid|onion)$/i.test(host)
-        || url.origin === XXCANCEL_URL) continue;
+        || DISPATCHER_ORIGINS.has(url.origin)) continue;
       origins.add(url.origin);
     } catch {
       // Ignore malformed or unsafe destinations.
@@ -62,13 +67,36 @@ export function isPublicAddress(address: string): boolean {
   return family === 6 && globalIPv6.check(address, 'ipv6') && !privateAddresses.check(address, 'ipv6');
 }
 
+async function fetchDiscoveryPage(): Promise<Response> {
+  let url = `${XNOTME_URL}${DISCOVERY_PATH}`;
+  const signal = AbortSignal.timeout(15_000);
+  for (let redirects = 0; ; redirects++) {
+    const response = await fetch(url, { redirect: 'manual', signal });
+    if (!REDIRECT_STATUSES.has(response.status)) {
+      if (response.ok) return response;
+      await response.body?.cancel();
+      throw new Error(`Instance discovery returned HTTP ${response.status}`);
+    }
+    await response.body?.cancel();
+    if (redirects >= MAX_DISCOVERY_REDIRECTS) throw new Error('Instance discovery redirected too many times');
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Instance discovery redirect is missing Location');
+    let next: URL;
+    try { next = new URL(location, url); } catch { throw new Error('Instance discovery returned an invalid redirect'); }
+    // xxcancel moved to xnotme. Permit only known dispatcher origins and the
+    // fixed discovery path, not arbitrary redirects or Nitter proxy targets.
+    if (!DISPATCHER_ORIGINS.has(next.origin) || next.username || next.password
+      || next.pathname !== DISCOVERY_PATH || next.search || next.hash) {
+      throw new Error('Instance discovery redirect destination is not allowed');
+    }
+    url = next.href;
+  }
+}
+
 export async function discoverInstances(resolve = (hostname: string): Promise<Array<{ address: string }>> => lookup(hostname, { all: true })): Promise<string[]> {
-  // xxcancel uses JavaScript/meta refresh, not HTTP redirects. Resolve its
-  // advertised destinations without executing third-party JavaScript.
-  const response = await fetch(`${XXCANCEL_URL}/nasa`, {
-    redirect: 'error', signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) throw new Error(`Instance discovery returned HTTP ${response.status}`);
+  // Dispatcher pages route users via JavaScript/meta refresh. Parse the
+  // advertised instances without executing that third-party JavaScript.
+  const response = await fetchDiscoveryPage();
   const html = await response.text();
   if (html.length > 512_000) throw new Error('Instance discovery response is too large');
   const origins = parseInstanceOrigins(html);
@@ -81,7 +109,7 @@ export async function discoverInstances(resolve = (hostname: string): Promise<Ar
     }
   }));
   const result = approved.filter((origin): origin is string => origin !== null);
-  if (!result.length) throw new Error('xxcancel did not advertise any usable public Nitter instances');
+  if (!result.length) throw new Error('xnotme did not advertise any usable public Nitter instances');
   return result;
 }
 
@@ -100,7 +128,7 @@ export class NitterInstances {
   constructor(options: { automatic?: boolean; baseUrl?: string; discover?: () => Promise<string[]>; now?: () => number } = {}) {
     this.automatic = options.automatic ?? automaticInstances();
     const base = options.baseUrl ?? configuredBaseUrl();
-    this.fallback = base === XXCANCEL_URL ? 'https://nitter.click' : base;
+    this.fallback = DISPATCHER_ORIGINS.has(base) ? 'https://nitter.click' : base;
     this.candidates = [this.fallback];
     this.known = [this.fallback];
     this.discover = options.discover ?? discoverInstances;
@@ -150,9 +178,9 @@ export class NitterInstances {
         for (const base of this.failedUntil.keys()) {
           if (!this.known.includes(base)) this.failedUntil.delete(base);
         }
-        log(`Discovered ${discovered.length} Nitter instance(s) through xxcancel`);
+        log(`Discovered ${discovered.length} Nitter instance(s) through xnotme`);
       } catch (error) {
-        log.warn(`Discovery failed; retaining known instances: ${String(error)}`);
+        log.warn(`Discovery failed for ${XNOTME_URL}; retaining known instances: ${errorDetails(error)}`);
       } finally {
         this.refreshedAt = this.now();
       }
